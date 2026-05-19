@@ -37,9 +37,10 @@ struct _MqttConfigSpaces {
 } MqttConfigSpaces = {0};
 Network NetworkStu;
 MQTTClient Client;
-JsonObject MqttConfig = {0};
-JsonArray CmdName;
-JsonArray CmdVar;
+
+JsonObject_T MqttConfig = {0};
+JsonArray_T CmdName = {0};
+JsonArray_T CmdVar = {0};
 
 // 运行标记
 int RunningFlag = -1; // -1 表示未完全启动 mqtt
