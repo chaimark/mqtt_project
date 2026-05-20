@@ -1,0 +1,17 @@
+{
+    "devSend_topic": [
+         "hy/gw/set/02345678903"
+    ],
+    "webSend_topic": [
+         "hy/gw/get/02345678903"
+    ],
+    "username": "admin_dev",
+    "password": "njhy1234",
+    "userid": "admin_dev",
+    "isWebClient": false,
+    "isShowTime": true,
+    "cmd_Name_Array": [
+    ],
+    "cmd_Var_Array": [
+    ]
+}

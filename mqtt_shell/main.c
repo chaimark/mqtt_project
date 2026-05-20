@@ -17,6 +17,7 @@
 // 定义会发生的事件
 #define EVENT_BIT_0 (SIGRTMIN + 1) // 代表 MQTT 连接成功
 #define EVENT_BIT_1 (SIGRTMIN + 2) // 代表需要重连
+#define EVENT_BIT_2 (SIGRTMIN + 2) // 代表需要重连
 
 // Mqtt 参数
 #define DEFINE_QOS 0
@@ -211,127 +212,24 @@ void messageArrived(MessageData *Md) {
     printf("%.*s\n", (int)msg->payloadlen, (char *)msg->payload);
 }
 
-void displayHelp(const char *FileName) {
-    // 重新读文件更新配置
-    FILE *file = fopen(FileName, "r");
-    if (file == NULL) {
-        perror("Failed to open file");
-        return;
-    }
-
-    if (_readFile(file, false) == -1) {
-        printf("read file error");
-        fclose(file);
-        return;
-    }
-    printf("\n>>  %s\n>>  %s\n", CmdName.JsonString.Name._char, CmdVar.JsonString.Name._char);
-}
-
-// 提取 CmdLen 中输入的参数
-bool getUserArg(strnew OutItemStr, strnew CmdLen, int Item_I) {
-    // stringSlice(IntStr, CmdName, , );
-    int count = 0;
-    int n = 0;
-    char *ptr = CmdLen.Name._char;
-    while (sscanf(ptr, "%s%n", OutItemStr.Name._char, &n) == 1) {
-        if (count == Item_I) {
-            return true;
-        }
-        memset(OutItemStr.Name._char, 0, OutItemStr.MaxLen);
-        count++;
-        ptr += n;
-    }
-    return false;
-}
-
-// CmdLen: "read 02345678902"
-// SendJsonSpace: "{'checkFlag':'$$chai',Id':'$','data':'read'}"
-// 装载用户快捷指令的参数, 如果需要发送 $ 输入两个 $$ 代替
-void makeCmdStr(strnew SendJsonSpace, strnew CmdLen) {
-    int Arg_i = 1;
-    int OverAddr = 0;
-    strnew_malloc(OverStr, strlen(SendJsonSpace.Name._char) + strlen(CmdLen.Name._char));
-    strnew_malloc(IntStr, CmdLen.MaxLen);
-    for (int i = 0; (i < SendJsonSpace.MaxLen) && (SendJsonSpace.Name._char[i] != '\0'); i++) {
-        if (i + 1 >= SendJsonSpace.MaxLen) {
-            OverStr.Name._char[OverAddr++] = '\0';
-            break;
-        }
-        if (SendJsonSpace.Name._char[i] != '$') {
-            OverStr.Name._char[OverAddr++] = (SendJsonSpace.Name._char[i] == '\'' ? '\"' : SendJsonSpace.Name._char[i]);
-            continue;
-        }
-        if (SendJsonSpace.Name._char[i + 1] == '$') {
-            OverStr.Name._char[OverAddr++] = SendJsonSpace.Name._char[i];
-            i++;
-            continue;
-        }
-        // SendJsonSpace.Name._char[i] 是 $ 变量
-        // 提取 CmdLen 中输入的参数
-        if (getUserArg(IntStr, CmdLen, Arg_i++)) {
-            // 追加到 OverStr
-            OverAddr = catString(OverStr.Name._char, IntStr.Name._cschar, OverStr.MaxLen, strlen(IntStr.Name._char));
-        } else {
-            return; // 中止，直接发 SendJsonSpace
-        }
-    }
-    Arg_i = strlen(OverStr.Name._char);
-    // 替换结束，替换 SendJsonSpace
-    memcpy(SendJsonSpace.Name._char, OverStr.Name._char, strlen(OverStr.Name._char) + 1);
-    SendJsonSpace.Name._char[Arg_i] = '\0';
-    return;
-}
-
-void findCmdByUserKeyStr(strnew UserKeyStr) {
-    // 如果用户输入的字符串长度大于快捷指令的长度,则不可能是会计指令
-    if (strlen(UserKeyStr.Name._char) > 256) {
-        return; // 可以发送
-    }
-    newString(TempCmdSpace, 257);
-    for (int i = 0; i < CmdName.sizeItemNum(&CmdName); i++) {
-        CmdName.get(&CmdName, TempCmdSpace, i);
-        // 指令表是用户输入的字串
-        if (strstr(UserKeyStr.Name._char, TempCmdSpace.Name._char) != NULL) {
-            TempCmdSpace.Name._int[0] = i;
-            TempCmdSpace.Name._int[1] = -1;
-            TempCmdSpace.Name._int[2] = 0;
-            break;
-        }
-        memset(TempCmdSpace.Name._char, 0, TempCmdSpace.MaxLen);
-    }
-    // 如果是 -1 表示找到了
-    if (TempCmdSpace.Name._int[1] == -1) {
-        int Addr = TempCmdSpace.Name._int[0];
-        memset(TempCmdSpace.Name._char, 0, TempCmdSpace.MaxLen);
-        // 保存用户输入
-        memcpy(TempCmdSpace.Name._char, UserKeyStr.Name._char, strlen(UserKeyStr.Name._char));
-        memset(UserKeyStr.Name._char, 0, UserKeyStr.MaxLen);
-        // 将用户的快捷指令改成 config.json 中存的指令
-        CmdVar.get(&CmdVar, UserKeyStr, Addr);
-        // 将用户输入的指令参数 $, 替换到 UserKeyStr 中保存的模板指令
-        makeCmdStr(UserKeyStr, TempCmdSpace);
-    }
-    return;
-}
-
 // 检查用户的指令是否匹配快捷指令表
-int checkQuickCmd(strnew UserKeyStr) {
-    UserKeyStr.Name._char[strlen(UserKeyStr.Name._char) - 1] = '\0';
-    if (strlen(UserKeyStr.Name._char) == 0) {
-        return 0;
-    }
-    if (strcmp(UserKeyStr.Name._char, "help") == 0) {
-        displayHelp("config.json");
-        return 0; // 不可以发送
-    }
-    if (strcmp(UserKeyStr.Name._char, "clear") == 0) {
-        pthread_mutex_lock(&MqttMutex); // 加锁
-        system("clear");
-        pthread_mutex_unlock(&MqttMutex); // 解锁
-        return 0;                         // 不可以发送
-    }
-    // 检查用户输入的是不是指令表中的指令
-    findCmdByUserKeyStr(UserKeyStr);
+int makeUpDataJson(strnew StrSpace) {
+    // 测试 对象数
+    newRootJsonObject(StrSpace);
+    addJsonItemData(StrSpace, "model:\"%s\"", "aaaaaa");
+    newSubArrayJsonItem(StrSpace, "messages", {
+        newSubObjectJsonItem(StrSpace, "", {
+            addJsonItemData(StrSpace, "role:\"%s\"", "aaaaaaaa");
+            addJsonItemData(StrSpace, "content:\"%s\"", "AAAAAAA");
+        });
+        newSubObjectJsonItem(StrSpace, "", {
+            addJsonItemData(StrSpace, "role:\"%s\"", "bbbbbb");
+            addJsonItemData(StrSpace, "content:\"%s\"", "BBBBBBB");
+        });
+    });
+    addJsonItemData(StrSpace, "temperature:%.1f", 3.14);
+    addJsonItemData(StrSpace, "max_tokens:%d", 37648);
+    addJsonItemData(StrSpace, "stream:%s", "false");
     return 1;
 }
 
@@ -357,10 +255,15 @@ void *mqttYieldThread(void *arg) {
 
 // 定时器回调函数,周期置位事件
 void setSendHeatPack(union sigval Sv) {
+    static uint8_t HeatConunt = 0;
     pthread_t *NowThreadId = (pthread_t *)Sv.sival_ptr;
     if (NowThreadId != NULL) {
         pthread_kill((*NowThreadId), EVENT_BIT_0);
     }
+    if (HeatConunt == 3) {
+        pthread_kill((*NowThreadId), EVENT_BIT_2);
+    }
+    HeatConunt = (HeatConunt < 3 ? HeatConunt + 1 : 0);
 }
 
 // 设置定时器
@@ -382,7 +285,7 @@ timer_t startTimer(void) {
     struct itimerspec Its;
     Its.it_value.tv_sec = 3; // First expiration
     Its.it_value.tv_nsec = 0;
-    Its.it_interval.tv_sec = 23; // Period
+    Its.it_interval.tv_sec = 7; // Period
     Its.it_interval.tv_nsec = 0;
 
     // 启动定时器
@@ -413,13 +316,15 @@ int main(void) {
     sigemptyset(&mask);
     sigaddset(&mask, EVENT_BIT_0);
     sigaddset(&mask, EVENT_BIT_1);
-    pthread_sigmask(SIG_BLOCK, &mask, NULL);
+    sigaddset(&mask, EVENT_BIT_2);
+    sigemptyset(&event_group); // 初始化事件组
     // 保存主线程句柄,供定时器周期通知主线程
+    sigaddset(&event_group, EVENT_BIT_0);
+    sigaddset(&event_group, EVENT_BIT_1);
+    sigaddset(&event_group, EVENT_BIT_2);
+    pthread_sigmask(SIG_BLOCK, &mask, NULL);
     MainThreadId = pthread_self();
-    sigemptyset(&event_group);            // 初始化事件组
-    sigaddset(&event_group, EVENT_BIT_0); // 加入事件位
-    sigaddset(&event_group, EVENT_BIT_1); // 加入事件位
-    timer_t TimerId = startTimer();       // 开启定时器,周期设置事件位
+    timer_t TimerId = startTimer(); // 开启定时器,周期设置事件位
 
 ReConnect:
     printf("Connecting to %s:%d...\n", MqttConfigSpaces.Url, MqttConfigSpaces.Port);
@@ -497,23 +402,12 @@ ReConnect:
     RunningFlag = true; // 准备启动线程和主循环
     pthread_t ListenTid;
     pthread_create(&ListenTid, NULL, mqttYieldThread, &Client);
-    fd_set ReadFds;
-    struct timeval Tv;
     // 循环等待用户输入
     while (RunningFlag) {
-        FD_ZERO(&ReadFds);
-        FD_SET(STDIN_FILENO, &ReadFds);
-        Tv.tv_sec = 0;
-        Tv.tv_usec = 200000; // 200ms 超时，让循环有机会检查 RunningFlag
-
         int sig = sigtimedwait(&event_group, &info, &timeout);
-        int Ret = select(STDIN_FILENO + 1, &ReadFds, NULL, NULL, &Tv);
-        if (Ret > 0 && FD_ISSET(STDIN_FILENO, &ReadFds)) {
+        if ((sig > 0) && (sig == EVENT_BIT_2)) {
             memset(UserString.Name._char, 0, UserString.MaxLen);
-            // 等待输入
-            fgets(UserString.Name._char, UserString.MaxLen - 512, stdin);
-            // 检查是不是快捷指令
-            if (checkQuickCmd(UserString) == 0) {
+            if (makeUpDataJson(UserString) == -1) {
                 continue;
             }
             // 准备发布
