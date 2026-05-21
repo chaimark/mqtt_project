@@ -15,9 +15,9 @@
 #include "./C_MyLib/TimeLib.h"
 
 // 定义会发生的事件
-#define EVENT_BIT_0 (SIGRTMIN + 1) // 代表 MQTT 连接成功
+#define EVENT_BIT_0 (SIGRTMIN + 1) // MQTT 心跳发送事件
 #define EVENT_BIT_1 (SIGRTMIN + 2) // 代表需要重连
-#define EVENT_BIT_2 (SIGRTMIN + 2) // 代表需要重连
+#define EVENT_BIT_2 (SIGRTMIN + 3) // 代表主动上报数据
 
 // Mqtt 参数
 #define DEFINE_QOS 0
@@ -239,7 +239,7 @@ void *mqttYieldThread(void *arg) {
     int Rc = SUCCESS;
     while (RunningFlag) {
         pthread_mutex_lock(&MqttMutex); // 加锁
-        Rc = MQTTYield(client, 30);
+        Rc = MQTTYield(client, 10);
         pthread_mutex_unlock(&MqttMutex); // 解锁
                                           //
         // 每100ms处理一次MQTT网络事件
@@ -258,7 +258,7 @@ void setSendHeatPack(union sigval Sv) {
     static uint8_t HeatConunt = 0;
     pthread_t *NowThreadId = (pthread_t *)Sv.sival_ptr;
     if (NowThreadId != NULL) {
-        pthread_kill((*NowThreadId), EVENT_BIT_0);
+        // pthread_kill((*NowThreadId), EVENT_BIT_0);
     }
     if (HeatConunt == 3) {
         pthread_kill((*NowThreadId), EVENT_BIT_2);
@@ -308,7 +308,7 @@ int main(void) {
     siginfo_t info;
     struct timespec timeout = {
         .tv_sec = 0,
-        .tv_nsec = 0,
+        .tv_nsec = 100 * 1000 * 1000,
     };
 
     // 防止信号（事件位）直接杀死进程
