@@ -42,7 +42,6 @@ JsonObject MqttConfig = {0};
 JsonArray CmdName = {0};
 JsonArray CmdVar = {0};
 bool IsCloseHeat = false;
-
 // 运行标记
 int RunningFlag = -1; // -1 表示未完全启动 mqtt
 // 定义互斥锁
