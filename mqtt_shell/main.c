@@ -285,7 +285,7 @@ timer_t startTimer(void) {
     struct itimerspec Its;
     Its.it_value.tv_sec = 3; // First expiration
     Its.it_value.tv_nsec = 0;
-    Its.it_interval.tv_sec = 7; // Period
+    Its.it_interval.tv_sec = 23; // Period
     Its.it_interval.tv_nsec = 0;
 
     // 启动定时器
