@@ -13,16 +13,34 @@
 #include "./C_MyLib/cJson.h"
 #include "./C_MyLib/NumberBaseLib.h"
 #include "./C_MyLib/TimeLib.h"
+// Mqtt 参数
+#define DEFINE_QOS 0
+// 用户下发的指令表
+#define TIMEOUT 10000
+#define UserInputSizeMax 1024
+
+struct _UserCmd {
+    int DataSumNum;
+    char StrList[10][UserInputSizeMax + 1];
+} UserCmd;
+
+void addData(strnew InputCmd) {
+    memcpy(UserCmd.StrList[UserCmd.DataSumNum], InputCmd.Name._char, InputCmd.MaxLen);
+    UserCmd.DataSumNum++;
+}
+
+strnew delData(void) {
+    UserCmd.DataSumNum--;
+    strnew OutStr = NEW_NAME(UserCmd.StrList[UserCmd.DataSumNum]);
+    return OutStr;
+}
 
 // 定义会发生的事件
 #define EVENT_BIT_0 (SIGRTMIN + 1) // MQTT 心跳发送事件
 #define EVENT_BIT_1 (SIGRTMIN + 2) // 代表需要重连
 #define EVENT_BIT_2 (SIGRTMIN + 3) // 代表主动上报数据
+#define EVENT_BIT_3 (SIGRTMIN + 4) // 处理指令
 
-// Mqtt 参数
-#define DEFINE_QOS 0
-#define TIMEOUT 10000
-#define UserInputSizeMax 1024
 struct _MqttConfigSpaces {
     char Url[256];
     int Port;
@@ -210,6 +228,9 @@ void messageArrived(MessageData *Md) {
     }
     printf("Topic:%.*s\n", (int)Md->topicName->lenstring.len, (char *)Md->topicName->lenstring.data);
     printf("%.*s\n", (int)msg->payloadlen, (char *)msg->payload);
+    strnew_malloc(buf, (int)msg->payloadlen + 1);
+    sprintf(buf.Name._char, "%.*s\n", (int)msg->payloadlen, (char *)msg->payload);
+    addData(buf);
 }
 
 // 检查用户的指令是否匹配快捷指令表
@@ -236,20 +257,26 @@ int makeUpDataJson(strnew StrSpace) {
 // 线程扫描接收 Buff
 void *mqttYieldThread(void *arg) {
     MQTTClient *client = (MQTTClient *)arg;
+    static int ConuntError = 2;
     int Rc = SUCCESS;
     while (RunningFlag) {
         pthread_mutex_lock(&MqttMutex); // 加锁
         Rc = MQTTYield(client, 10);
         pthread_mutex_unlock(&MqttMutex); // 解锁
-                                          //
         // 每100ms处理一次MQTT网络事件
-        if (Rc != SUCCESS) {
+        if ((Rc != SUCCESS) && (ConuntError > 0)) {
             printf("res data error\n");
-            pthread_kill(MainThreadId, EVENT_BIT_1);
-            break;
+            ConuntError--;
+            if (ConuntError == 0) {
+                ConuntError = 2;
+                break;
+            }
+        } else {
+            ConuntError = 2;
         }
         usleep(30 * 1000); // 空闲等待
     }
+    pthread_kill(MainThreadId, EVENT_BIT_1);
     return NULL;
 }
 
@@ -317,143 +344,180 @@ int main(void) {
     sigaddset(&mask, EVENT_BIT_0);
     sigaddset(&mask, EVENT_BIT_1);
     sigaddset(&mask, EVENT_BIT_2);
+    sigaddset(&mask, EVENT_BIT_3);
     sigemptyset(&event_group); // 初始化事件组
     // 保存主线程句柄,供定时器周期通知主线程
     sigaddset(&event_group, EVENT_BIT_0);
     sigaddset(&event_group, EVENT_BIT_1);
     sigaddset(&event_group, EVENT_BIT_2);
+    sigaddset(&event_group, EVENT_BIT_3);
     pthread_sigmask(SIG_BLOCK, &mask, NULL);
     MainThreadId = pthread_self();
     timer_t TimerId = startTimer(); // 开启定时器,周期设置事件位
 
-ReConnect:
-    printf("Connecting to %s:%d...\n", MqttConfigSpaces.Url, MqttConfigSpaces.Port);
-    NetworkInit(&NetworkStu);
-    int Rc = NetworkConnect(&NetworkStu, MqttConfigSpaces.Url, MqttConfigSpaces.Port);
-    if (Rc != 0) {
-        printf("TCP connect failed, rc=%d\n", Rc);
-        return -1;
-    }
-    printf("TCP connected\n");
+    for (int ReconnectNum = 0; ReconnectNum < 5; ReconnectNum++) {
+        // 重新读文件更新配置
+        FILE *file = fopen("config.json", "r");
+        if (file == NULL) {
+            perror("Failed to open file");
+            return -1;
+        }
 
-    newString(ReadBuf, UserInputSizeMax * 2);
-    newString(SendBuf, UserInputSizeMax * 2);
-    MQTTClientInit(&Client, &NetworkStu, TIMEOUT, SendBuf.Name._uchar, SendBuf.MaxLen, ReadBuf.Name._uchar, ReadBuf.MaxLen);
+        if (_readFile(file, true) == -1) {
+            printf("read file error");
+            fclose(file);
+            return -1;
+        }
+        fclose(file);
 
-    MQTTPacket_connectData MqttData = MQTTPacket_connectData_initializer;
-    MqttData.keepAliveInterval = 60;
-    MqttData.cleansession = 1;
-    MqttData.clientID.cstring = MqttConfigSpaces.UserId;
-    MqttData.username.cstring = MqttConfigSpaces.UserName;
-    MqttData.password.cstring = MqttConfigSpaces.Password;
-    Rc = MQTTConnect(&Client, &MqttData);
-    if (Rc != SUCCESS) {
-        printf("MQTT connect failed, rc=%d\n", Rc);
-        NetworkDisconnect(&NetworkStu);
-        return -1;
-    }
-    printf("MQTT connected, ClientID=%s\n", MqttConfigSpaces.UserId);
+        printf("Connecting to %s:%d...\n", MqttConfigSpaces.Url, MqttConfigSpaces.Port);
+        NetworkInit(&NetworkStu);
+        int Rc = NetworkConnect(&NetworkStu, MqttConfigSpaces.Url, MqttConfigSpaces.Port);
+        if (Rc != 0) {
+            printf("TCP connect failed, rc=%d\n", Rc);
+            return -1;
+        }
+        printf("TCP connected\n");
 
-    // 准备发布的 topic; 和订阅的 topic
-    JsonArray SendTopic = {0};
-    JsonArray SubTopic = {0};
-    if (MqttConfigSpaces.IsWebClient == true) {
-        SendTopic = newJsonArrayByString(NEW_NAME(MqttConfigSpaces.WebSendTopic));
-        // 如果是 网络客户端, 即 pc 监控端
-        // 需要监控所有 dev 的 send topic
-        SubTopic = newJsonArrayByString(NEW_NAME(MqttConfigSpaces.DevSendTopic));
-    } else {
-        SendTopic = newJsonArrayByString(NEW_NAME(MqttConfigSpaces.DevSendTopic));
-        // 否则是 设备客户端, 即 dev 模拟端
-        // 需要监控 web 下发命令的 send topic
-        SubTopic = newJsonArrayByString(NEW_NAME(MqttConfigSpaces.WebSendTopic));
-    }
+        newString(ReadBuf, UserInputSizeMax * 2);
+        newString(SendBuf, UserInputSizeMax * 2);
+        MQTTClientInit(&Client, &NetworkStu, TIMEOUT, SendBuf.Name._uchar, SendBuf.MaxLen, ReadBuf.Name._uchar, ReadBuf.MaxLen);
 
-    newString(TempTopic, UserInputSizeMax);
-    for (int i = 0; i < SubTopic.sizeItemNum(&SubTopic); i++) {
-        SubTopic.get(&SubTopic, TempTopic, i);
-        printf("Subscribing to [%s]\n", TempTopic.Name._cschar);
-        Rc = MQTTSubscribe(&Client, TempTopic.Name._cschar, DEFINE_QOS, messageArrived);
+        MQTTPacket_connectData MqttData = MQTTPacket_connectData_initializer;
+        MqttData.keepAliveInterval = 60;
+        MqttData.cleansession = 1;
+        MqttData.clientID.cstring = MqttConfigSpaces.UserId;
+        MqttData.username.cstring = MqttConfigSpaces.UserName;
+        MqttData.password.cstring = MqttConfigSpaces.Password;
+        Rc = MQTTConnect(&Client, &MqttData);
+        if (Rc != SUCCESS) {
+            printf("MQTT connect failed, rc=%d\n", Rc);
+            NetworkDisconnect(&NetworkStu);
+            return -1;
+        }
+        printf("MQTT connected, ClientID=%s\n", MqttConfigSpaces.UserId);
+
+        // 准备发布的 topic; 和订阅的 topic
+        JsonArray SendTopic = {0};
+        JsonArray SubTopic = {0};
+        // 定义一个用户键盘输入的缓冲区
+        newString(UserString, UserInputSizeMax * 2);
+        if (MqttConfigSpaces.IsWebClient == true) {
+            SendTopic = newJsonArrayByString(NEW_NAME(MqttConfigSpaces.WebSendTopic));
+            // 如果是 网络客户端, 即 pc 监控端
+            // 需要监控所有 dev 的 send topic
+            SubTopic = newJsonArrayByString(NEW_NAME(MqttConfigSpaces.DevSendTopic));
+        } else {
+            SendTopic = newJsonArrayByString(NEW_NAME(MqttConfigSpaces.DevSendTopic));
+            // 否则是 设备客户端, 即 dev 模拟端
+            // 需要监控 web 下发命令的 send topic
+            SubTopic = newJsonArrayByString(NEW_NAME(MqttConfigSpaces.WebSendTopic));
+        }
+        newString(TempTopic, UserInputSizeMax);
+        memset(TempTopic.Name._char, 0, UserInputSizeMax);
+        for (int i = 0; i < SubTopic.sizeItemNum(&SubTopic); i++) {
+            SubTopic.get(&SubTopic, TempTopic, i);
+            printf("Subscribing to [%s]\n", TempTopic.Name._cschar);
+            Rc = MQTTSubscribe(&Client, TempTopic.Name._cschar, DEFINE_QOS, messageArrived);
+            if (Rc != SUCCESS) {
+                return -1;
+            }
+            int HeadAddrNum = strlen(TempTopic.Name._char);
+            TempTopic.Name._char[HeadAddrNum++] = '\0';
+            TempTopic.MaxLen -= HeadAddrNum;
+            TempTopic.Name._char = &TempTopic.Name._char[HeadAddrNum];
+        }
+        TempTopic.MaxLen = UserInputSizeMax;
+        TempTopic.Name._char = StrTempTopic;
+
+        usleep(500000); // 500ms 延迟,等待 SUBACK
         if (Rc != SUCCESS) {
             return -1;
         }
-        int HeadAddrNum = strlen(TempTopic.Name._char);
-        TempTopic.Name._char[HeadAddrNum++] = '\0';
-        TempTopic.MaxLen -= HeadAddrNum;
-        TempTopic.Name._char = &TempTopic.Name._char[HeadAddrNum];
-    }
-    usleep(500000); // 500ms 延迟,等待 SUBACK
-    if (Rc != SUCCESS) {
-        return -1;
-    }
 
-    // 定义一个用户键盘输入的缓冲区
-    newString(UserString, UserInputSizeMax * 2);
-    // 将发布 topic 从 json 数组中提取出来，暂时存到用户缓存区
-    SendTopic.get(&SendTopic, UserString, 0);
-    // 释放发布数组的空间 MqttConfigSpaces.xxxSendTopic
-    memset(SendTopic.JsonString.Name._char, 0, SendTopic.JsonString.MaxLen);
-    // 内存复制发布 topic 到刚释放的 MqttConfigSpaces.xxxSendTopic
-    memcpy(SendTopic.JsonString.Name._char, UserString.Name._cschar, strlen(UserString.Name._cschar));
-    // 复位用户缓存区
-    memset(UserString.Name._char, 0, UserString.MaxLen);
-    printf("\nPlease enter help\n");
+        // 将发布 topic 从 json 数组中提取出来，暂时存到用户缓存区
+        SendTopic.get(&SendTopic, UserString, 0);
+        // 释放发布数组的空间 MqttConfigSpaces.xxxSendTopic
+        memset(SendTopic.JsonString.Name._char, 0, SendTopic.JsonString.MaxLen);
+        // 内存复制发布 topic 到刚释放的 MqttConfigSpaces.xxxSendTopic
+        memcpy(SendTopic.JsonString.Name._char, UserString.Name._cschar, strlen(UserString.Name._cschar));
+        // 复位用户缓存区
+        memset(UserString.Name._char, 0, UserString.MaxLen);
+        printf("\nPlease enter help\n");
 
-    RunningFlag = true; // 准备启动线程和主循环
-    pthread_t ListenTid;
-    pthread_create(&ListenTid, NULL, mqttYieldThread, &Client);
-    // 循环等待用户输入
-    while (RunningFlag) {
-        int sig = sigtimedwait(&event_group, &info, &timeout);
-        if ((sig > 0) && (sig == EVENT_BIT_2)) {
-            memset(UserString.Name._char, 0, UserString.MaxLen);
-            if (makeUpDataJson(UserString) == -1) {
-                continue;
+        RunningFlag = true; // 准备启动线程和主循环
+        pthread_t ListenTid;
+        pthread_create(&ListenTid, NULL, mqttYieldThread, &Client);
+
+        // 循环等待用户输入
+        while (RunningFlag) {
+            int sig = sigtimedwait(&event_group, &info, &timeout);
+            if ((sig > 0) && (sig == EVENT_BIT_2)) {
+                memset(UserString.Name._char, 0, UserString.MaxLen);
+                if (makeUpDataJson(UserString) == -1) {
+                    continue;
+                }
+                // 准备发布
+                MQTTMessage MqttMsg = {
+                    .qos = DEFINE_QOS,
+                    .retained = 0,
+                    .dup = 0,
+                    .payload = UserString.Name._void,
+                    .payloadlen = strlen(UserString.Name._char),
+                };
+                // 发布
+                pthread_mutex_lock(&MqttMutex); // 加锁
+                Rc = MQTTPublish(&Client, SendTopic.JsonString.Name._cschar, &MqttMsg);
+                pthread_mutex_unlock(&MqttMutex); // 解锁
+                printf("SendFlag=%s >> %s\n\n", (Rc == 0 ? "true" : "false"), SendTopic.JsonString.Name._cschar);
+                memset(UserString.Name._char, 0, UserString.MaxLen);
             }
-            // 准备发布
-            MQTTMessage MqttMsg = {
-                .qos = DEFINE_QOS,
-                .retained = 0,
-                .dup = 0,
-                .payload = UserString.Name._void,
-                .payloadlen = strlen(UserString.Name._char),
-            };
-            // 发布
-            pthread_mutex_lock(&MqttMutex); // 加锁
-            Rc = MQTTPublish(&Client, SendTopic.JsonString.Name._cschar, &MqttMsg);
-            pthread_mutex_unlock(&MqttMutex); // 解锁
-            printf("SendFlag=%s >> %s\n\n", (Rc == 0 ? "true" : "false"), SendTopic.JsonString.Name._cschar);
-            memset(UserString.Name._char, 0, UserString.MaxLen);
+            // 判断事件是否置位
+            if ((sig > 0) && (sig == EVENT_BIT_0)) {
+                // 构造你的心跳 JSON 或字符串
+                char heatPack[] = "{\"cmd\":\"heartbeat\"}";
+                MQTTMessage HeartBeatMsg = {
+                    .qos = DEFINE_QOS,
+                    .retained = 0,
+                    .dup = 0,
+                    .payload = (void *)heatPack,
+                    .payloadlen = strlen(heatPack),
+                };
+                // 安全地发送 MQTT 数据（主循环和 yield 线程共用 client，必须加锁）
+                pthread_mutex_lock(&MqttMutex);
+                Rc = MQTTPublish(&Client, SendTopic.JsonString.Name._cschar, &HeartBeatMsg);
+                pthread_mutex_unlock(&MqttMutex);
+            }
+            // 判断是否重连
+            if ((sig > 0) && (sig == EVENT_BIT_1)) {
+                printf("Reboot Connect\n");
+            }
+            if ((sig > 0) && (sig == EVENT_BIT_2)) {
+                // 构造你的心跳 JSON 或字符串
+                newString(CmdStrDown, (UserInputSizeMax + 1));
+                CmdStrDown = delData();
+                MQTTMessage ResData = {
+                    .qos = DEFINE_QOS,
+                    .retained = 0,
+                    .dup = 0,
+                    .payload = (void *)CmdStrDown.Name._cschar,
+                    .payloadlen = strlen(CmdStrDown.Name._cschar),
+                };
+                // 安全地发送 MQTT 数据（主循环和 yield 线程共用 client，必须加锁）
+                pthread_mutex_lock(&MqttMutex);
+                Rc = MQTTPublish(&Client, SendTopic.JsonString.Name._cschar, &ResData);
+                pthread_mutex_unlock(&MqttMutex);
+            }
+            usleep(100);
         }
-        // 判断事件是否置位
-        if ((sig > 0) && (sig == EVENT_BIT_0)) {
-            // 构造你的心跳 JSON 或字符串
-            char heatPack[] = "{\"cmd\":\"heartbeat\"}";
-            MQTTMessage HeartBeatMsg = {
-                .qos = DEFINE_QOS,
-                .retained = 0,
-                .dup = 0,
-                .payload = (void *)heatPack,
-                .payloadlen = strlen(heatPack),
-            };
-            // 安全地发送 MQTT 数据（主循环和 yield 线程共用 client，必须加锁）
-            pthread_mutex_lock(&MqttMutex);
-            Rc = MQTTPublish(&Client, SendTopic.JsonString.Name._cschar, &HeartBeatMsg);
-            pthread_mutex_unlock(&MqttMutex);
-        }
-        // 判断是否重连
-        if ((sig > 0) && (sig == EVENT_BIT_1)) {
-            pthread_join(ListenTid, NULL);
-            MQTTDisconnect(&Client);
-            NetworkDisconnect(&NetworkStu);
-            printf("Reboot Connect\n");
-            goto ReConnect;
+        printf("Disconnected\n");
+        pthread_join(ListenTid, NULL);
+        MQTTDisconnect(&Client);
+        NetworkDisconnect(&NetworkStu);
+        if (RunningFlag == false) {
+            break;
         }
     }
-    printf("Disconnected\n");
-    pthread_join(ListenTid, NULL);
-    MQTTDisconnect(&Client);
-    NetworkDisconnect(&NetworkStu);
     timer_delete(TimerId);
     return 0;
 }
