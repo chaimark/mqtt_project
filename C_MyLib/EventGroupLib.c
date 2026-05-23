@@ -1,37 +1,27 @@
-#include "Test.h"
+#include "EventGroupLib.h"
 
-typedef struct _PRIVATE {
-    int vark;
-} PRIVATE;
-
-int _add(struct _testClass This) {
-    return This.a + This.b;
+// 添加事件
+int _addEvent(struct _EventGroup This, strnew Name) {
+    This.EventsNumber++;
+	return 0;
+}
+// 等待某个事件（阻塞）
+int _waitEventForName(struct _EventGroup This, strnew Name) {
+    return 0;
+}
+// 检查是否有事件产生
+int _checkEvents(struct _EventGroup This) {
+    return 0;
 }
 
-// 通过函数暴露 私有变量
-int _getK(struct _testClass This) {
-    return This.pdata->vark;
-}
-void _setK(struct _testClass This, int setVar) {
-    This.pdata->vark = setVar;
-}
-
-testClass newTestClass(void) {
-    testClass Temp = {0};
-    Temp.a = 0;
-    Temp.b = 0;
-    Temp.pdata = (struct _PRIVATE *)malloc(sizeof(struct _PRIVATE));
-    Temp.pdata->vark = 0;
-    Temp.add = _add;
-    Temp.getK = _getK;
-    Temp.setK = _setK;
-    return Temp;
+eventgroup_t newEventGroup(void) {
+    eventgroup_t Temp = {0};
+	Temp.addEvent = _addEvent;
+	Temp.waitEventForName = _waitEventForName;
+	Temp.checkEvents = _checkEvents;
+	return Temp;
 }
 
-void cleanTestClass(testClass This) {
-    // 释放私有数据的内存
-    if (This.pdata) {
-        free(This.pdata);
-        This.pdata = NULL;
-    }
+void cleanEventGroup(eventgroup_t This) {
+    // 释放事件组链表
 }
