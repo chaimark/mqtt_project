@@ -423,15 +423,15 @@ int main(void) {
     sigaddset(&mask, EVENT_BIT_0);
     sigaddset(&mask, EVENT_BIT_1);
     pthread_sigmask(SIG_BLOCK, &mask, NULL);
-	// 创建一个事件组
-	sigset_t event_group;
+    // 创建一个事件组
+    sigset_t event_group;
     sigemptyset(&event_group);            // 初始化事件组
     sigaddset(&event_group, EVENT_BIT_0); // 加入事件位
     sigaddset(&event_group, EVENT_BIT_1); // 加入事件位
     timer_t TimerId = startTimer();       // 开启定时器,周期设置事件位
-										  
-	// 保存主线程句柄,供定时器周期通知主线程
-	MainThreadId = pthread_self();
+
+    // 保存主线程句柄,供定时器周期通知主线程
+    MainThreadId = pthread_self();
 
     for (int ReconnectNum = 0; ReconnectNum < 5; ReconnectNum++) {
         // 重新读文件更新配置
@@ -583,7 +583,7 @@ int main(void) {
                 printf("Reboot Connect\n");
                 break;
             }
-			usleep(100);
+            usleep(100);
         }
         printf("Disconnected\n");
         pthread_join(ListenTid, NULL);
