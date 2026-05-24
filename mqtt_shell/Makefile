@@ -42,7 +42,8 @@ CFLAGS += -I./Eclipse_Paho/MQTTClient-C/src \
 
 # ========== MQTT 源文件列表 ==========
 PROJECT_SRCS := \
-    Eclipse_Paho/MQTTPacket/src/MQTTPacket.c \
+	Eclipse_Paho/*.c \
+	Eclipse_Paho/MQTTPacket/src/MQTTPacket.c \
     Eclipse_Paho/MQTTPacket/src/MQTTFormat.c \
     Eclipse_Paho/MQTTPacket/src/MQTTConnectClient.c \
     Eclipse_Paho/MQTTPacket/src/MQTTConnectServer.c \

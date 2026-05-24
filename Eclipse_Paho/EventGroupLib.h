@@ -1,7 +1,7 @@
 #ifndef __EVENTGROUPLIB__
 #define __EVENTGROUPLIB__
 
-#include "./StrLib.h"
+#include "../C_MyLib/StrLib.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,7 +13,7 @@
 #include <string.h>
 
 typedef struct _itemevent {
-    strnew Name;
+    strnew ItemName;
     int efd;
     struct _itemevent *next;
     struct _itemevent *prev;
@@ -29,9 +29,13 @@ typedef struct _EventGroup {
     // 添加事件
     int (*addEvent)(struct _EventGroup This, strnew Name);
     // 等待某个事件（阻塞）
-    int (*waitEventForName)(struct _EventGroup This, strnew Name);
+    int (*checkEventForName)(struct _EventGroup This, strnew Name);
     // 检查是否有事件产生
-    int (*checkEvents)(struct _EventGroup This, struct epoll_event *Events, uint8_t MaxEventNum);
+    int (*waitEvents)(struct _EventGroup This, struct epoll_event *Events, uint8_t MaxEventNum);
+	// 触发事件
+	int (*setEventForName)(struct _EventGroup This, strnew Name);
+	// 事件写入时需要锁
+	pthread_mutex_t efdlock;
 } eventGroup;
 
 // 定义一个事件组

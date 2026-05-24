@@ -13,6 +13,10 @@
 #include "./C_MyLib/cJson.h"
 #include "./C_MyLib/NumberBaseLib.h"
 #include "./C_MyLib/TimeLib.h"
+#include "./Eclipse_Paho/EventGroupLib.h"
+
+// 定义会发生的事件
+eventGroup EventS;
 // Mqtt 参数
 #define DEFINE_QOS 0
 // 用户下发的指令表
@@ -35,12 +39,6 @@ strnew delData(void) {
     return OutStr;
 }
 
-// 定义会发生的事件
-#define EVENT_BIT_0 (SIGRTMIN + 1) // MQTT 心跳发送事件
-#define EVENT_BIT_1 (SIGRTMIN + 2) // 代表需要重连
-#define EVENT_BIT_2 (SIGRTMIN + 3) // 代表主动上报数据
-#define EVENT_BIT_3 (SIGRTMIN + 4) // 处理指令
-
 struct _MqttConfigSpaces {
     char Url[256];
     int Port;
@@ -60,24 +58,15 @@ MQTTClient Client;
 JsonObject MqttConfig = {0};
 JsonArray CmdName = {0};
 JsonArray CmdVar = {0};
-
-// 运行标记
-int RunningFlag = -1; // -1 表示未完全启动 mqtt
-
 // 定义互斥锁
 pthread_mutex_t MqttMutex = PTHREAD_MUTEX_INITIALIZER;
+volatile sig_atomic_t RunningFlag = 1;
 
-// 主线程句柄
-pthread_t MainThreadId;
-// 信号处理函数
 void handle_sigint(int Sig) {
     (void)Sig;
-    printf("\nCaught SIGINT (Ctrl+C), cleaning up...\n");
-    if (RunningFlag == -1) {
-        RunningFlag = false;
-        exit(0);
-    }
-    RunningFlag = false; // 主线程稍后会检查这个标志并退出
+    const char msg[] = "\nCaught SIGINT, exiting...\n";
+    write(STDOUT_FILENO, msg, sizeof(msg)-1);
+    RunningFlag = 0;
 }
 
 void printConfigStu(void) {
@@ -231,6 +220,7 @@ void messageArrived(MessageData *Md) {
     strnew_malloc(buf, (int)msg->payloadlen + 1);
     sprintf(buf.Name._char, "%.*s\n", (int)msg->payloadlen, (char *)msg->payload);
     addData(buf);
+    EventS.setEventForName(&EventS, NEW_NAME("DoneCmd"));
 }
 
 // 检查用户的指令是否匹配快捷指令表
@@ -276,19 +266,16 @@ void *mqttYieldThread(void *arg) {
         }
         usleep(30 * 1000); // 空闲等待
     }
-    pthread_kill(MainThreadId, EVENT_BIT_1);
+    EventS.setEventForName(&EventS, NEW_NAME("Reconnect"));
     return NULL;
 }
 
 // 定时器回调函数,周期置位事件
 void setSendHeatPack(union sigval Sv) {
     static uint8_t HeatConunt = 0;
-    pthread_t *NowThreadId = (pthread_t *)Sv.sival_ptr;
-    if (NowThreadId != NULL) {
-        // pthread_kill((*NowThreadId), EVENT_BIT_0);
-    }
+    (void)Sv;
     if (HeatConunt == 3) {
-        pthread_kill((*NowThreadId), EVENT_BIT_2);
+        EventS.setEventForName(&EventS, NEW_NAME("SendData"));
     }
     HeatConunt = (HeatConunt < 3 ? HeatConunt + 1 : 0);
 }
@@ -302,7 +289,7 @@ timer_t startTimer(void) {
     // 绑定你的回调函数
     Sev.sigev_notify_function = setSendHeatPack;
     // 传递给回调的参数（不需要就传NULL）
-    Sev.sigev_value.sival_ptr = (void *)MainThreadId;
+    Sev.sigev_value.sival_ptr = NULL;
     Sev.sigev_notify_attributes = NULL;
 
     // 创建定时器
@@ -330,29 +317,11 @@ int main(void) {
         return 0;
     }
 
-    // 创建一个事件组
-    sigset_t event_group;
-    siginfo_t info;
-    struct timespec timeout = {
-        .tv_sec = 0,
-        .tv_nsec = 100 * 1000 * 1000,
-    };
-
-    // 防止信号（事件位）直接杀死进程
-    sigset_t mask;
-    sigemptyset(&mask);
-    sigaddset(&mask, EVENT_BIT_0);
-    sigaddset(&mask, EVENT_BIT_1);
-    sigaddset(&mask, EVENT_BIT_2);
-    sigaddset(&mask, EVENT_BIT_3);
-    sigemptyset(&event_group); // 初始化事件组
-    // 保存主线程句柄,供定时器周期通知主线程
-    sigaddset(&event_group, EVENT_BIT_0);
-    sigaddset(&event_group, EVENT_BIT_1);
-    sigaddset(&event_group, EVENT_BIT_2);
-    sigaddset(&event_group, EVENT_BIT_3);
-    pthread_sigmask(SIG_BLOCK, &mask, NULL);
-    MainThreadId = pthread_self();
+    // 创建事件
+    EventS = newEventGroup();
+    EventS.addEvent(&EventS, NEW_NAME("Reconnect"));
+    EventS.addEvent(&EventS, NEW_NAME("SendData"));
+    EventS.addEvent(&EventS, NEW_NAME("DoneCmd"));
     timer_t TimerId = startTimer(); // 开启定时器,周期设置事件位
 
     for (int ReconnectNum = 0; ReconnectNum < 5; ReconnectNum++) {
@@ -451,8 +420,7 @@ int main(void) {
 
         // 循环等待用户输入
         while (RunningFlag) {
-            int sig = sigtimedwait(&event_group, &info, &timeout);
-            if ((sig > 0) && (sig == EVENT_BIT_2)) {
+            if (EventS.checkEventForName(&EventS, NEW_NAME("SendData")) > 0) {
                 memset(UserString.Name._char, 0, UserString.MaxLen);
                 if (makeUpDataJson(UserString) == -1) {
                     continue;
@@ -472,8 +440,9 @@ int main(void) {
                 printf("SendFlag=%s >> %s\n\n", (Rc == 0 ? "true" : "false"), SendTopic.JsonString.Name._cschar);
                 memset(UserString.Name._char, 0, UserString.MaxLen);
             }
+
             // 判断事件是否置位
-            if ((sig > 0) && (sig == EVENT_BIT_0)) {
+            if (EventS.checkEventForName(&EventS, NEW_NAME("SendHeat")) > 0) {
                 // 构造你的心跳 JSON 或字符串
                 char heatPack[] = "{\"cmd\":\"heartbeat\"}";
                 MQTTMessage HeartBeatMsg = {
@@ -489,10 +458,10 @@ int main(void) {
                 pthread_mutex_unlock(&MqttMutex);
             }
             // 判断是否重连
-            if ((sig > 0) && (sig == EVENT_BIT_1)) {
+            if (EventS.checkEventForName(&EventS, NEW_NAME("Reconnect")) > 0) {
                 printf("Reboot Connect\n");
             }
-            if ((sig > 0) && (sig == EVENT_BIT_2)) {
+            if (EventS.checkEventForName(&EventS, NEW_NAME("DoneCmd")) > 0) {
                 // 构造你的心跳 JSON 或字符串
                 newString(CmdStrDown, (UserInputSizeMax + 1));
                 CmdStrDown = delData();
