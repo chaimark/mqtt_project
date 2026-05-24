@@ -3,8 +3,7 @@
          "hy/gw/set/02345678903"
     ],
     "webSend_topic": [
-         "hy/gw/get/02345678903",
-         "hy/gw/set/02345678903"
+         "hy/gw/get/02345678903"
     ],
     "username": "admin_dev",
     "password": "njhy1234",

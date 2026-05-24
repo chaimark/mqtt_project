@@ -65,7 +65,7 @@ volatile sig_atomic_t RunningFlag = 1;
 void handle_sigint(int Sig) {
     (void)Sig;
     const char msg[] = "\nCaught SIGINT, exiting...\n";
-    write(STDOUT_FILENO, msg, sizeof(msg)-1);
+    write(STDOUT_FILENO, msg, sizeof(msg) - 1);
     RunningFlag = 0;
 }
 
@@ -319,8 +319,8 @@ int main(void) {
 
     // 创建事件
     EventS = newEventGroup();
-    EventS.addEvent(&EventS, NEW_NAME("Reconnect"));
     EventS.addEvent(&EventS, NEW_NAME("SendData"));
+    EventS.addEvent(&EventS, NEW_NAME("Reconnect"));
     EventS.addEvent(&EventS, NEW_NAME("DoneCmd"));
     timer_t TimerId = startTimer(); // 开启定时器,周期设置事件位
 
@@ -440,30 +440,13 @@ int main(void) {
                 printf("SendFlag=%s >> %s\n\n", (Rc == 0 ? "true" : "false"), SendTopic.JsonString.Name._cschar);
                 memset(UserString.Name._char, 0, UserString.MaxLen);
             }
-
-            // 判断事件是否置位
-            if (EventS.checkEventForName(&EventS, NEW_NAME("SendHeat")) > 0) {
-                // 构造你的心跳 JSON 或字符串
-                char heatPack[] = "{\"cmd\":\"heartbeat\"}";
-                MQTTMessage HeartBeatMsg = {
-                    .qos = DEFINE_QOS,
-                    .retained = 0,
-                    .dup = 0,
-                    .payload = (void *)heatPack,
-                    .payloadlen = strlen(heatPack),
-                };
-                // 安全地发送 MQTT 数据（主循环和 yield 线程共用 client，必须加锁）
-                pthread_mutex_lock(&MqttMutex);
-                Rc = MQTTPublish(&Client, SendTopic.JsonString.Name._cschar, &HeartBeatMsg);
-                pthread_mutex_unlock(&MqttMutex);
-            }
-            // 判断是否重连
             if (EventS.checkEventForName(&EventS, NEW_NAME("Reconnect")) > 0) {
                 printf("Reboot Connect\n");
             }
             if (EventS.checkEventForName(&EventS, NEW_NAME("DoneCmd")) > 0) {
                 // 构造你的心跳 JSON 或字符串
                 newString(CmdStrDown, (UserInputSizeMax + 1));
+                memset(CmdStrDown.Name._char, 0, (UserInputSizeMax + 1));
                 CmdStrDown = delData();
                 MQTTMessage ResData = {
                     .qos = DEFINE_QOS,
