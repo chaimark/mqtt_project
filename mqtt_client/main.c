@@ -432,8 +432,8 @@ int main(void) {
 
     // 保存主线程句柄,供定时器周期通知主线程
     MainThreadId = pthread_self();
-
-    for (int ReconnectNum = 0; ReconnectNum < 5; ReconnectNum++) {
+    
+	for (int ReconnectNum = 0; ReconnectNum < 5; ReconnectNum++) {
         // 重新读文件更新配置
         FILE *file = fopen("config.json", "r");
         if (file == NULL) {

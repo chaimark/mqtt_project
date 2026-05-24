@@ -15,7 +15,8 @@ export CFLAGS = -m64
 endif
 	
 # 准备默认编译选项
-CFLAGS += -Wall -Wextra
+CFLAGS += -Wall -Wextra -Wno-return-local-addr
+CFLAGS += -fplugin=$(shell pwd)/C_MyLib/check_strnew/check_stack_escape.so
 LDFLAGS = 
 
 # 调试标志，默认关闭
@@ -57,10 +58,10 @@ PROJECT_SRCS := \
 PROJECT_OBJS := $(addprefix $(BUILD_DIR)/, $(addsuffix .o, $(basename $(PROJECT_SRCS))))
 
 # 伪目标
-.PHONY: all subMake clear clean distclean distclear mkbuild mqtt_lib
+.PHONY: all subMake clear clean distclean distclear mkbuild mqtt_lib init
 
 # ---------- 三个任务存储在变量中，合并成一条规则 ----------
-other_exe := TCP_Server TCP_User UDP_Server UDP_User
+other_exe := 
 main_exe := main
 
 # 默认目标：生成所有可执行文件
@@ -68,6 +69,10 @@ all: $(main_exe)
 
 mkbuild:
 	mkdir -p $(BUILD_DIR)
+
+init:
+	@cd C_MyLib/check_strnew/ && ./initcheck_strnew.sh
+
 
 # 编译规则：将当前目录下的 .c 编译到 build/ 下的 .o
 $(BUILD_DIR)/%.o: %.c | mkbuild
