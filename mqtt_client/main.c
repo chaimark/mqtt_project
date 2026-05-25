@@ -48,7 +48,7 @@ volatile sig_atomic_t RunningFlag = 1;
 void handle_sigint(int Sig) {
     (void)Sig;
     const char msg[] = "\nCaught SIGINT, exiting...\n";
-    write(STDOUT_FILENO, msg, sizeof(msg)-1);
+    write(STDOUT_FILENO, msg, sizeof(msg) - 1);
     RunningFlag = 0;
 }
 

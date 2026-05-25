@@ -247,7 +247,7 @@ int makeUpDataJson(strnew StrSpace) {
 // 线程扫描接收 Buff
 void *mqttYieldThread(void *arg) {
     MQTTClient *client = (MQTTClient *)arg;
-    static int ConuntError = 2;
+    static int ConuntError = 3;
     int Rc = SUCCESS;
     while (RunningFlag) {
         pthread_mutex_lock(&MqttMutex); // 加锁
@@ -258,11 +258,11 @@ void *mqttYieldThread(void *arg) {
             printf("res data error\n");
             ConuntError--;
             if (ConuntError == 0) {
-                ConuntError = 2;
+                ConuntError = 3;
                 break;
             }
         } else {
-            ConuntError = 2;
+            ConuntError = 3;
         }
         usleep(30 * 1000); // 空闲等待
     }
@@ -448,6 +448,7 @@ int main(void) {
                 newString(CmdStrDown, (UserInputSizeMax + 1));
                 memset(CmdStrDown.Name._char, 0, (UserInputSizeMax + 1));
                 CmdStrDown = delData();
+                strcpy(CmdStrDown.Name._char, "res ok\n\0");
                 MQTTMessage ResData = {
                     .qos = DEFINE_QOS,
                     .retained = 0,
