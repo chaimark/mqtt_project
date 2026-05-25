@@ -13,10 +13,12 @@
     "isShowTime": true,
     "cmd_Name_Array": [
         "read",
+        "test",
         "stime"
     ],
     "cmd_Var_Array": [
         "{'gw':{'gw_id':'0234567890$','Read':'AT24DataJSON'},'data':{}}",
+        "this is test",
         "{'gw':{'gw_id':'0234567890$','SetCmd':'$$Heart'},'data':{'Time':'$'}}"
     ]
 }

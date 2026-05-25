@@ -43,15 +43,15 @@ JsonArray CmdVar = {0};
 bool IsCloseHeat = false;
 // 定义互斥锁
 pthread_mutex_t MqttMutex = PTHREAD_MUTEX_INITIALIZER;
-volatile sig_atomic_t RunningFlag = 1;
+volatile sig_atomic_t RunningFlag = false;
 void handle_sigint(int Sig) {
-    if (RunningFlag) {
+    if (RunningFlag != true) {
         return;
     }
     (void)Sig;
     const char msg[] = "\nCaught SIGINT, exiting...\n";
     write(STDOUT_FILENO, msg, sizeof(msg) - 1);
-    RunningFlag = 0;
+    RunningFlag = false;
 }
 
 void printConfigStu(void) {
@@ -240,6 +240,15 @@ bool getUserArg(strnew OutItemStr, strnew CmdLen, int Item_I) {
     return false;
 }
 
+// 将 ChrA 换成 ChrB, 如果确实需要 ChrA 就写两个 ChrA
+void changeChr(strnew InputStr, char ChrA, char ChrB) {
+    for (int i = 0; i < InputStr.MaxLen; i++) {
+        if (InputStr.Name._char[i] != ChrA) {
+            continue;
+        }
+        InputStr.Name._char[i] = ChrB;
+    }
+}
 // CmdLen: "read 02345678902"
 // SendJsonSpace: "{'checkFlag':'$$chai',Id':'$','data':'read'}"
 // 装载用户快捷指令的参数, 如果需要发送 $ 输入两个 $$ 代替
@@ -268,6 +277,7 @@ void makeCmdStr(strnew SendJsonSpace, strnew CmdLen) {
             // 追加到 OverStr
             OverAddr = catString(OverStr.Name._char, IntStr.Name._cschar, OverStr.MaxLen, strlen(IntStr.Name._char));
         } else {
+            changeChr(SendJsonSpace, '\'', '\"');
             return; // 中止，直接发 SendJsonSpace
         }
     }
