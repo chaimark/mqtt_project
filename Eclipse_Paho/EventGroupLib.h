@@ -32,10 +32,10 @@ typedef struct _EventGroup {
     int (*checkEventForName)(struct _EventGroup This, strnew Name);
     // 检查是否有事件产生
     int (*waitEvents)(struct _EventGroup This, struct epoll_event *Events, uint8_t MaxEventNum);
-	// 触发事件
-	int (*setEventForName)(struct _EventGroup This, strnew Name);
-	// 事件写入时需要锁
-	pthread_mutex_t efdlock;
+    // 触发事件
+    int (*setEventForName)(struct _EventGroup This, strnew Name);
+    // 事件写入时需要锁
+    pthread_mutex_t efdlock;
 } eventGroup;
 
 // 定义一个事件组

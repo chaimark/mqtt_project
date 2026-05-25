@@ -77,7 +77,7 @@ int _checkEventForName(struct _EventGroup This, strnew Name) {
 
 // 设置事件
 int _setEventForName(struct _EventGroup This, strnew Name) {
-	pthread_mutex_lock(&This.efdlock);
+    pthread_mutex_lock(&This.efdlock);
     // 1. 查找 Name 对应的事件节点
     itemevent_t *AddrItem = getItmeForName(&This, Name);
     if (AddrItem == NULL) {
