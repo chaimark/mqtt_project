@@ -61,8 +61,10 @@ JsonArray CmdVar = {0};
 // 定义互斥锁
 pthread_mutex_t MqttMutex = PTHREAD_MUTEX_INITIALIZER;
 volatile sig_atomic_t RunningFlag = 1;
-
 void handle_sigint(int Sig) {
+    if (RunningFlag) {
+        return;
+    }
     (void)Sig;
     const char msg[] = "\nCaught SIGINT, exiting...\n";
     write(STDOUT_FILENO, msg, sizeof(msg) - 1);
