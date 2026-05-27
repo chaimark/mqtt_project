@@ -45,7 +45,7 @@ int _addEvent(struct _EventGroup This, strnew Name) {
     return 0;
 }
 
-// 获取所有已产生的事件
+// 获取所有已产生的事件 存放到 Events 数组，This.EventsNumber 为最大事件数
 int _waitEvents(struct _EventGroup This, struct epoll_event *Events, uint8_t TimeNumber) {
     int nfds = 0;
     while (nfds <= 0) {
