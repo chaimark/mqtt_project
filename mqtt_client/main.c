@@ -556,7 +556,7 @@ int main(void) {
                 printf("SendFlag=%s >> %s\n\n", (Rc == 0 ? "true" : "false"), SendTopic.JsonString.Name._cschar);
                 memset(UserString.Name._char, 0, UserString.MaxLen);
             }
-            if (EventS.checkEventForName(&EventS, NEW_NAME("SendHeat")) > 0) {
+            if (EventS.readEventForName(&EventS, NEW_NAME("SendHeat")) > 0) {
                 char heatPack[] = "{\"cmd\":\"heartbeat\"}";
                 MQTTMessage HeartBeatMsg = {
                     .qos = DEFINE_QOS,
@@ -570,7 +570,7 @@ int main(void) {
                 Rc = MQTTPublish(&Client, SendTopic.JsonString.Name._cschar, &HeartBeatMsg);
                 pthread_mutex_unlock(&MqttMutex);
             }
-            if (EventS.checkEventForName(&EventS, NEW_NAME("Reconnect")) > 0) {
+            if (EventS.readEventForName(&EventS, NEW_NAME("Reconnect")) > 0) {
                 printf("Reboot Connect\n");
                 break;
             }

@@ -45,12 +45,12 @@ int _addEvent(struct _EventGroup This, strnew Name) {
     return 0;
 }
 
-// 等待某个事件（阻塞）
-int _waitEvents(struct _EventGroup This, struct epoll_event *Events, uint8_t MaxEventNum) {
+// 获取所有已产生的事件
+int _waitEvents(struct _EventGroup This, struct epoll_event *Events, uint8_t TimeNumber) {
     int nfds = 0;
     while (nfds <= 0) {
-        // 阻塞等待事件发生，-1 表示无限等待
-        nfds = epoll_wait(This.epfd, Events, MaxEventNum, -1);
+        // 阻塞等待事件发生，-1 表示无限等待, 0 表示非阻塞
+        nfds = epoll_wait(This.epfd, Events, This.EventsNumber, TimeNumber);
 
         if (nfds == -1) {
             if (errno == EINTR) {
@@ -63,8 +63,8 @@ int _waitEvents(struct _EventGroup This, struct epoll_event *Events, uint8_t Max
     return nfds; // 【核心修复】成功时返回实际就绪的事件个数（> 0）
 }
 
-// 检查是否有事件产生
-int _checkEventForName(struct _EventGroup This, strnew Name) {
+// 检查某个事件是否发生，非阻塞
+int _readEventForName(struct _EventGroup This, strnew Name) {
     // 查找 Name 对应的 efd
     itemevent_t *AddrItem = getItmeForName(&This, Name);
     uint64_t cnt = 0;
@@ -97,7 +97,7 @@ int _setEventForName(struct _EventGroup This, strnew Name) {
 eventGroup newEventGroup(void) {
     eventGroup Temp = {0};
     Temp.addEvent = _addEvent;
-    Temp.checkEventForName = _checkEventForName;
+    Temp.readEventForName = _readEventForName;
     Temp.waitEvents = _waitEvents;
     Temp.setEventForName = _setEventForName;
     pthread_mutex_init(&Temp.efdlock, NULL);

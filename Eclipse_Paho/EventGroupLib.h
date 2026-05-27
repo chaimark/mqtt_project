@@ -28,10 +28,10 @@ typedef struct _EventGroup {
     int EventsNumber;
     // 添加事件
     int (*addEvent)(struct _EventGroup This, strnew Name);
-    // 等待某个事件（阻塞）
-    int (*checkEventForName)(struct _EventGroup This, strnew Name);
-    // 检查是否有事件产生
-    int (*waitEvents)(struct _EventGroup This, struct epoll_event *Events, uint8_t MaxEventNum);
+    // 获取所有已产生的事件
+    int (*waitEvents)(struct _EventGroup This, struct epoll_event *Events, uint8_t TimeNumber);
+    // 检查某个事件是否发生，非阻塞
+    int (*readEventForName)(struct _EventGroup This, strnew Name);
     // 触发事件
     int (*setEventForName)(struct _EventGroup This, strnew Name);
     // 事件写入时需要锁

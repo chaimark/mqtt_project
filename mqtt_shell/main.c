@@ -14,6 +14,7 @@
 #include "./C_MyLib/NumberBaseLib.h"
 #include "./C_MyLib/TimeLib.h"
 #include "./Eclipse_Paho/EventGroupLib.h"
+#include "./ShellCmd.h"
 
 // 定义会发生的事件
 eventGroup EventS;
@@ -446,10 +447,10 @@ int main(void) {
                 printf("Reboot Connect\n");
             }
             if (EventS.checkEventForName(&EventS, NEW_NAME("DoneCmd")) > 0) {
-                // 构造你的心跳 JSON 或字符串
                 newString(CmdStrDown, (UserInputSizeMax + 1));
                 memset(CmdStrDown.Name._char, 0, (UserInputSizeMax + 1));
                 CmdStrDown = delData();
+                DoneCmdByMqttStr(CmdStrDown);
                 strcpy(CmdStrDown.Name._char, "res ok\n\0");
                 MQTTMessage ResData = {
                     .qos = DEFINE_QOS,
