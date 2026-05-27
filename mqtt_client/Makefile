@@ -35,11 +35,11 @@ LIB_NAME = -lpthread -lMyLib
 LIB_OTHER = -lmqttclient 
 
 # ========== MQTT 头文件路径 ==========
-CFLAGS += \ 
+CFLAGS += \
 	-I ./C_MyLib \
 	-I ./Eclipse_Paho/MQTTClient-C/src \
 	-I ./Eclipse_Paho/MQTTClient-C/src/linux \
-	-I ./Eclipse_Paho/MQTTPacket/src \
+	-I ./Eclipse_Paho/MQTTPacket/src 
 
 # ========== MQTT 源文件列表 ==========
 PROJECT_SRCS := \
@@ -55,7 +55,7 @@ PROJECT_SRCS := \
 	Eclipse_Paho/MQTTPacket/src/MQTTUnsubscribeClient.c \
 	Eclipse_Paho/MQTTPacket/src/MQTTUnsubscribeServer.c \
 	Eclipse_Paho/MQTTClient-C/src/MQTTClient.c \
-	Eclipse_Paho/MQTTClient-C/src/linux/MQTTLinux.c \
+	Eclipse_Paho/MQTTClient-C/src/linux/MQTTLinux.c 
 
 PROJECT_OBJS := $(addprefix $(BUILD_DIR)/, $(addsuffix .o, $(basename $(PROJECT_SRCS))))
 

@@ -423,7 +423,7 @@ int main(void) {
 
         // 循环等待用户输入
         while (RunningFlag) {
-            if (EventS.checkEventForName(&EventS, NEW_NAME("SendData")) > 0) {
+            if (EventS.readEventForName(&EventS, NEW_NAME("SendData")) > 0) {
                 memset(UserString.Name._char, 0, UserString.MaxLen);
                 if (makeUpDataJson(UserString) == -1) {
                     continue;
@@ -443,10 +443,10 @@ int main(void) {
                 printf("SendFlag=%s >> %s\n\n", (Rc == 0 ? "true" : "false"), SendTopic.JsonString.Name._cschar);
                 memset(UserString.Name._char, 0, UserString.MaxLen);
             }
-            if (EventS.checkEventForName(&EventS, NEW_NAME("Reconnect")) > 0) {
+            if (EventS.readEventForName(&EventS, NEW_NAME("Reconnect")) > 0) {
                 printf("Reboot Connect\n");
             }
-            if (EventS.checkEventForName(&EventS, NEW_NAME("DoneCmd")) > 0) {
+            if (EventS.readEventForName(&EventS, NEW_NAME("DoneCmd")) > 0) {
                 newString(CmdStrDown, (UserInputSizeMax + 1));
                 memset(CmdStrDown.Name._char, 0, (UserInputSizeMax + 1));
                 CmdStrDown = delData();
