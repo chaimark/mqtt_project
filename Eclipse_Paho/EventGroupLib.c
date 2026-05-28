@@ -60,7 +60,7 @@ int _waitEvents(struct _EventGroup This, struct epoll_event *Events, uint8_t Tim
             return -1; // 【优化】遇到真正的系统致命错误，直接返回 -1 告诉上层
         }
     }
-    return nfds; // 【核心修复】成功时返回实际就绪的事件个数（> 0）
+    return nfds; // 成功时返回实际就绪的事件个数（> 0）
 }
 
 // 检查某个事件是否发生，非阻塞
@@ -118,15 +118,15 @@ void cleanEventGroup(eventGroup This) {
         do {
             next = cur->next; // 先记住下一个节点
             if (cur->efd != -1) {
-                close(cur->efd); // 【修复】关闭内核的 eventfd 资源
+                close(cur->efd); // 关闭内核的 eventfd 资源
             }
             free(cur); // 释放当前节点的堆内存
             cur = next;
-        } while (cur != This.Head); // 【修复】当 cur 绕了一圈回到 Head 时，安全跳出循环
+        } while (cur != This.Head); // 当 cur 绕了一圈回到 Head 时，安全跳出循环
         // 通过你的指针宏修改外部实体的 Head
         (This).Head = NULL;
     }
-    // 【修复】关闭整个事件组的 epoll 句柄资源
+    // 关闭整个事件组的 epoll 句柄资源
     if (This.epfd != -1) {
         close(This.epfd);
         This.epfd = -1; // 刷成 -1，防止二次释放
