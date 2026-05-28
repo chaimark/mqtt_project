@@ -450,8 +450,7 @@ int main(void) {
                 newString(CmdStrDown, (UserInputSizeMax + 1));
                 memset(CmdStrDown.Name._char, 0, (UserInputSizeMax + 1));
                 CmdStrDown = delData();
-                DoneCmdByMqttStr(CmdStrDown);
-                strcpy(CmdStrDown.Name._char, "res ok\n\0");
+                CmdStrDown = DoneCmdByMqttStr(CmdStrDown);
                 MQTTMessage ResData = {
                     .qos = DEFINE_QOS,
                     .retained = 0,

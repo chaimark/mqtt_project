@@ -16,7 +16,9 @@ endif
 	
 # 准备默认编译选项
 CFLAGS += -Wall -Wextra -Wno-return-local-addr
-CFLAGS += -fplugin=$(shell pwd)/C_MyLib/check_strnew/check_stack_escape.so
+ifeq ($(CROSS_COMPILE),)
+        CFLAGS += -fplugin=$(shell pwd)/C_MyLib/check_strnew/check_stack_escape.so
+endif
 LDFLAGS = 
 
 # 调试标志，默认关闭

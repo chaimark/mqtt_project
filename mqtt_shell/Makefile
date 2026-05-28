@@ -16,7 +16,9 @@ endif
 	
 # 准备默认编译选项
 CFLAGS += -Wall -Wextra -Wno-return-local-addr
-CFLAGS += -fplugin=$(shell pwd)/C_MyLib/check_strnew/check_stack_escape.so
+ifeq ($(CROSS_COMPILE),)
+	CFLAGS += -fplugin=$(shell pwd)/C_MyLib/check_strnew/check_stack_escape.so
+endif
 LDFLAGS = 
 
 # 调试标志，默认关闭
@@ -75,8 +77,7 @@ mkbuild:
 	mkdir -p $(BUILD_DIR)
 
 init:
-	@cd C_MyLib/check_strnew/ && ./initcheck_strnew.sh
-
+	cd ./C_MyLib/check_strnew/ && ./initcheck_strnew.sh 
 
 # 编译规则：将当前目录下的 .c 编译到 build/ 下的 .o
 $(BUILD_DIR)/%.o: %.c | mkbuild
