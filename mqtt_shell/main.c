@@ -176,21 +176,12 @@ int readConfigFile(const char *FileName) {
         goto EndOver;
     }
 
-    printConfigStu();
-    printf("please key your url: 35.172.255.228:1883\n>>:");
-    newString(IpAndProt, 100);
-
     char Url[100] = {0};
     unsigned int Port = 0;
-    // 安全读取输入
-    if (fgets(IpAndProt.Name._char, IpAndProt.MaxLen, stdin) == NULL) {
-        fprintf(stderr, "Input error\n");
-        goto EndOver;
-    }
-    // 移除换行符（如果有）
-    IpAndProt.Name._char[strcspn(IpAndProt.Name._char, "\n")] = '\0';
+    printConfigStu();
+
     // 解析 IP 和端口
-    if (sscanf(IpAndProt.Name._char, "%99[^:]:%d", Url, &Port) != 2) {
+    if (sscanf(MqttConfigSpaces.Url, "%99[^:]:%d", Url, &Port) != 2) {
         fprintf(stderr, "Invalid format! Use 'ip:port'\n");
         goto EndOver;
     }
@@ -199,6 +190,7 @@ int readConfigFile(const char *FileName) {
         fprintf(stderr, "Invalid format! Use 'ip:port'\n");
         goto EndOver;
     }
+    memset(MqttConfigSpaces.Url, 0, ARR_SIZE(MqttConfigSpaces.Url));
     strcpy(MqttConfigSpaces.Url, Url);
     MqttConfigSpaces.Port = Port;
     ResFlag = 1; // 所有读取全部通过
@@ -310,7 +302,16 @@ timer_t startTimer(void) {
     return TimerId;
 }
 
-int main(void) {
+int main(int argc, char *argv[]) {
+    if (argc < 2) {
+        printf("使用方法: %s 35.172.255.228:1883\n", argv[0]);
+        return 1;
+    }
+    if (argc > 2) {
+        printf("使用方法: %s 35.172.255.228:1883\n", argv[0]);
+        return 1;
+    }
+    copyString(MqttConfigSpaces.Url, argv[1], ARR_SIZE(MqttConfigSpaces.Url), strlen(argv[1]));
     setvbuf(stdout, NULL, _IONBF, 0);
 
     // 注册 SIGINT 信号处理函数
@@ -421,6 +422,7 @@ int main(void) {
         pthread_t ListenTid;
         pthread_create(&ListenTid, NULL, mqttYieldThread, &Client);
 
+        int senderror_count = 0;
         // 循环等待用户输入
         while (RunningFlag) {
             if (EventS.readEventForName(&EventS, NEW_NAME("SendData")) > 0) {
@@ -442,9 +444,14 @@ int main(void) {
                 pthread_mutex_unlock(&MqttMutex); // 解锁
                 printf("SendFlag=%s >> %s\n\n", (Rc == 0 ? "true" : "false"), SendTopic.JsonString.Name._cschar);
                 memset(UserString.Name._char, 0, UserString.MaxLen);
+                senderror_count++;
+                if (senderror_count == 3) {
+                    break;
+                }
             }
             if (EventS.readEventForName(&EventS, NEW_NAME("Reconnect")) > 0) {
                 printf("Reboot Connect\n");
+                break;
             }
             if (EventS.readEventForName(&EventS, NEW_NAME("DoneCmd")) > 0) {
                 newString(CmdStrDown, (UserInputSizeMax + 1));
