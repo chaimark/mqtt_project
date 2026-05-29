@@ -328,7 +328,7 @@ int main(int argc, char *argv[]) {
     EventS.addEvent(&EventS, NEW_NAME("DoneCmd"));
     timer_t TimerId = startTimer(); // 开启定时器,周期设置事件位
 
-    for (int ReconnectNum = 0; ReconnectNum < 5; ReconnectNum++) {
+    for (int ReconnectNum = 0; ReconnectNum < 333; ReconnectNum++) {
         // 重新读文件更新配置
         FILE *file = fopen("config.json", "r");
         if (file == NULL) {
