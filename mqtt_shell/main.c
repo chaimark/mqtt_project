@@ -446,6 +446,7 @@ int main(int argc, char *argv[]) {
                 memset(UserString.Name._char, 0, UserString.MaxLen);
                 senderror_count++;
                 if (senderror_count == 3) {
+                    printf("Reboot Connect\n");
                     break;
                 }
             }
