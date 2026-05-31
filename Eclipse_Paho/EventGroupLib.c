@@ -32,7 +32,6 @@ int _addEvent(struct _EventGroup This, strnew Name) {
         Temp->next = This.Head;
         Temp->prev = NowNode;
         NowNode->next = Temp;
-        NowNode = Temp;
         This.Head->prev = Temp;
     }
     // 添加到 epfd
