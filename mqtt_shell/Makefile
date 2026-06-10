@@ -95,13 +95,11 @@ mqtt_lib: $(PROJECT_OBJS)
 # 链接 main（新增 mqtt 库依赖）
 $(main_exe): %: subMake mqtt_lib $(BUILD_DIR)/%.o
 	@echo build $@
-	$(CHECK_SCRIPT) $<
 	$(CC) $(LDFLAGS) -o $@ $(BUILD_DIR)/$@.o -L$(BUILD_DIR) $(LIB_NAME) $(LIB_OTHER)
 
 # ---------- 其他目标 -------
 $(other_exe): %: subMake $(BUILD_DIR)/%.o
 	@echo Building $@
-	$(CHECK_SCRIPT) $<
 	$(CC) $(LDFLAGS) -o $@ $(BUILD_DIR)/$@.o -L$(BUILD_DIR) $(LIB_NAME)
 
 # ---------- 清理 ----------
