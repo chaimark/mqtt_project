@@ -62,7 +62,7 @@ PROJECT_SRCS := \
 PROJECT_OBJS := $(addprefix $(BUILD_DIR)/, $(addsuffix .o, $(basename $(PROJECT_SRCS))))
 
 # 伪目标
-.PHONY: all subMake clear clean distclean distclear mkbuild mqtt_lib init
+.PHONY: all subMake clear clean distclean distclear mkbuild mqtt_lib
 
 # ---------- 三个任务存储在变量中，合并成一条规则 ----------
 other_exe := 
@@ -73,10 +73,6 @@ all: $(main_exe)
 
 mkbuild:
 	mkdir -p $(BUILD_DIR)
-
-init:
-	@cd C_MyLib/check_strnew/ && ./initcheck_strnew.sh
-
 
 # 编译规则：将当前目录下的 .c 编译到 build/ 下的 .o
 $(BUILD_DIR)/%.o: %.c | mkbuild
