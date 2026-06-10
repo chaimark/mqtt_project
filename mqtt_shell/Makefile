@@ -1,6 +1,9 @@
 # 启用 .ONESHELL 模式
 .ONESHELL:
 
+# 设置默认 strnew 检查脚本
+CHECK_SCRIPT ?= ./C_MyLib/linux_check_strnew.sh
+
 # 设置默认编译器
 CROSS_COMPILE ?=
 AR = $(CROSS_COMPILE)ar
@@ -15,10 +18,7 @@ export CFLAGS = -m64
 endif
 	
 # 准备默认编译选项
-CFLAGS += -Wall -Wextra -Wno-return-local-addr
-ifeq ($(CROSS_COMPILE),)
-	CFLAGS += -fplugin=$(shell pwd)/C_MyLib/check_strnew/check_stack_escape.so
-endif
+CFLAGS += -Wall -Wextra
 LDFLAGS = 
 
 # 调试标志，默认关闭
@@ -79,6 +79,7 @@ mkbuild:
 # 编译规则：将当前目录下的 .c 编译到 build/ 下的 .o
 $(BUILD_DIR)/%.o: %.c | mkbuild
 	@mkdir -p $(dir $@)
+	$(CHECK_SCRIPT) $<
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # ---------- 生成 libMyLib.a（子项目） ----------
@@ -94,11 +95,13 @@ mqtt_lib: $(PROJECT_OBJS)
 # 链接 main（新增 mqtt 库依赖）
 $(main_exe): %: subMake mqtt_lib $(BUILD_DIR)/%.o
 	@echo build $@
+	$(CHECK_SCRIPT) $<
 	$(CC) $(LDFLAGS) -o $@ $(BUILD_DIR)/$@.o -L$(BUILD_DIR) $(LIB_NAME) $(LIB_OTHER)
 
 # ---------- 其他目标 -------
 $(other_exe): %: subMake $(BUILD_DIR)/%.o
 	@echo Building $@
+	$(CHECK_SCRIPT) $<
 	$(CC) $(LDFLAGS) -o $@ $(BUILD_DIR)/$@.o -L$(BUILD_DIR) $(LIB_NAME)
 
 # ---------- 清理 ----------
