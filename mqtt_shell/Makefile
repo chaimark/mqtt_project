@@ -2,7 +2,7 @@
 .ONESHELL:
 
 # 设置默认 strnew 检查脚本
-CHECK_SCRIPT ?= ./C_MyLib/linux_check_strnew.sh
+CHECK_SCRIPT ?= ./WorkLib/linux_check_strnew.sh
 
 # 设置默认编译器
 CROSS_COMPILE ?=
@@ -33,12 +33,12 @@ BUILD_DIR = build
 BUILD_DIR_ABS := $(abspath $(BUILD_DIR))
 
 # 连接库
-LIB_NAME = -lpthread -lMyLib
+LIB_NAME = -lpthread -lWorkLib
 LIB_OTHER = -lmqttclient 
 
 # ========== MQTT 头文件路径 ==========
 CFLAGS += \
-	-I ./C_MyLib \
+	-I ./WorkLib \
 	-I ./OtherCode \
 	-I ./Eclipse_Paho/MQTTClient-C/src \
 	-I ./Eclipse_Paho/MQTTClient-C/src/linux \
@@ -82,10 +82,10 @@ $(BUILD_DIR)/%.o: %.c | mkbuild
 	$(CHECK_SCRIPT) $<
 	$(CC) $(CFLAGS) -c $< -o $@
 
-# ---------- 生成 libMyLib.a（子项目） ----------
+# ---------- 生成 libWorkLib.a（子项目） ----------
 subMake: mkbuild
-	@echo Building MyLib.a
-	$(MAKE) -C C_MyLib BUILD_DIR=$(BUILD_DIR_ABS) DEBUG=$(DEBUG)
+	@echo Building WorkLib.a
+	$(MAKE) -C WorkLib BUILD_DIR=$(BUILD_DIR_ABS) DEBUG=$(DEBUG)
 
 # ---------- 生成 xxxxx.a ------
 mqtt_lib: $(PROJECT_OBJS)
@@ -106,4 +106,4 @@ $(other_exe): %: subMake $(BUILD_DIR)/%.o
 clear clean distclean distclear:
 	@echo Cleaning up
 	-rm -rf $(other_exe) $(main_exe) $(BUILD_DIR)
-	-$(MAKE) distclean -C C_MyLib BUILD_DIR=$(BUILD_DIR_ABS) DEBUG=$(DEBUG)
+	-$(MAKE) distclean -C WorkLib BUILD_DIR=$(BUILD_DIR_ABS) DEBUG=$(DEBUG)

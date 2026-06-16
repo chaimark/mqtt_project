@@ -1,7 +1,7 @@
 #ifndef __SHELLCMD__
 #define __SHELLCMD__
 
-#include "../C_MyLib/StrLib.h"
+#include "../WorkLib/StrLib.h"
 
 extern strnew DoneCmdByMqttStr(strnew InputStr);
 

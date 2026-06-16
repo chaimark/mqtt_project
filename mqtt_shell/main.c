@@ -10,9 +10,9 @@
 #include <sys/eventfd.h>
 #include "MQTTLinux.h"
 #include "MQTTClient.h"
-#include "./C_MyLib/cJson.h"
-#include "./C_MyLib/NumberBaseLib.h"
-#include "./C_MyLib/TimeLib.h"
+#include "./WorkLib/cJson.h"
+#include "./WorkLib/NumberBaseLib.h"
+#include "./WorkLib/TimeLib.h"
 #include "./Eclipse_Paho/EventGroupLib.h"
 #include "./ShellCmd.h"
 

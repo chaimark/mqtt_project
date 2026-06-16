@@ -1,7 +1,7 @@
 #ifndef __EVENTGROUPLIB__
 #define __EVENTGROUPLIB__
 
-#include "../C_MyLib/StrLib.h"
+#include "../WorkLib/StrLib.h"
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
