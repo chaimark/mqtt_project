@@ -414,9 +414,6 @@ timer_t startTimer(void) {
 
 int main(void) {
     setvbuf(stdout, NULL, _IONBF, 0);
-
-    // 注册 SIGINT 信号处理函数
-    signal(SIGINT, handle_sigint);
     system("clear");
     if (readConfigFile("config.json") < 0) {
         return 0;
@@ -521,6 +518,8 @@ int main(void) {
         RunningFlag = true; // 准备启动线程和主循环
         pthread_t ListenTid;
         pthread_create(&ListenTid, NULL, mqttYieldThread, &Client);
+		// 注册 SIGINT 信号处理函数
+		signal(SIGINT, handle_sigint);
 
         fd_set ReadFds;
         struct timeval Tv;
