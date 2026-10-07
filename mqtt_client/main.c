@@ -44,6 +44,7 @@ bool IsCloseHeat = false;
 // 定义互斥锁
 pthread_mutex_t MqttMutex = PTHREAD_MUTEX_INITIALIZER;
 volatile sig_atomic_t RunningFlag = false;
+/*
 void handle_sigint(int Sig) {
     if (RunningFlag != true) {
         return;
@@ -53,7 +54,7 @@ void handle_sigint(int Sig) {
     write(STDOUT_FILENO, msg, sizeof(msg) - 1);
     RunningFlag = false;
 }
-
+*/
 void printConfigStu(void) {
     // 打印配置文件内容
     printf("{\n");
@@ -519,7 +520,7 @@ int main(void) {
         pthread_t ListenTid;
         pthread_create(&ListenTid, NULL, mqttYieldThread, &Client);
 		// 注册 SIGINT 信号处理函数
-		signal(SIGINT, handle_sigint);
+		// signal(SIGINT, handle_sigint);
 
         fd_set ReadFds;
         struct timeval Tv;
