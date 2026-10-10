@@ -203,26 +203,30 @@ void messageArrived(MessageData *Md) {
     printf("Topic:%.*s\n", (int)Md->topicName->lenstring.len, (char *)Md->topicName->lenstring.data);
     printf("%.*s\n", (int)msg->payloadlen, (char *)msg->payload);
 }
-
 void displayHelp(const char *FileName) {
     // 重新读文件更新配置
-    FILE *file = fopen(FileName, "r");
+    FILE *file = fopen(FileName, "rb"); // 使用"rb"模式
     if (file == NULL) {
         perror("Failed to open file");
         return;
     }
 
-    if (_readFile(file, false) == -1) {
+    if (_readFile(file) == -1) {
         printf("read file error");
         fclose(file);
         return;
     }
     fclose(file);
-    printf("\ninput key 'close_heat',close send data heating");
-    printf("\ninput key 'open_heat',open send data heating");
-    printf("\n>>  %s\n>>  %s\n", CmdName.JsonString.Name._char, CmdVar.JsonString.Name._char);
+    CmdName.sizeItemNum(&CmdName);
+    newString(TempCmdSpace, 1024);
+    for (int i = 0; i < CmdName.ItemNum; i++) {
+        printf("===================\n");
+        CmdName.get(&CmdName, TempCmdSpace, i);
+        printf("  %s\n", TempCmdSpace.Name._char);
+        CmdName.get(&CmdVar, TempCmdSpace, i);
+        printf("  %s\n", TempCmdSpace.Name._char);
+    }
 }
-
 // 提取 CmdLen 中输入的参数
 bool getUserArg(strnew OutItemStr, strnew CmdLen, int Item_I) {
     // stringSlice(IntStr, CmdName, , );
@@ -519,8 +523,8 @@ int main(void) {
         RunningFlag = true; // 准备启动线程和主循环
         pthread_t ListenTid;
         pthread_create(&ListenTid, NULL, mqttYieldThread, &Client);
-		// 注册 SIGINT 信号处理函数
-		// signal(SIGINT, handle_sigint);
+        // 注册 SIGINT 信号处理函数
+        // signal(SIGINT, handle_sigint);
 
         fd_set ReadFds;
         struct timeval Tv;
