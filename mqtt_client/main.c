@@ -211,7 +211,7 @@ void displayHelp(const char *FileName) {
         return;
     }
 
-    if (_readFile(file) == -1) {
+    if (_readFile(file, true) == -1) {
         printf("read file error");
         fclose(file);
         return;
