@@ -37,7 +37,7 @@
 #else
 
 #if defined(WIN32)
-#define inline              __inline
+#define inline __inline
 #define FUNC_ENTRY          StackTrace_entry(__FUNCTION__, __LINE__, TRACE_MINIMUM)
 #define FUNC_ENTRY_NOLOG    StackTrace_entry(__FUNCTION__, __LINE__, -1)
 #define FUNC_ENTRY_MED      StackTrace_entry(__FUNCTION__, __LINE__, TRACE_MEDIUM)
