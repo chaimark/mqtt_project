@@ -171,39 +171,65 @@ static void initStack(Stack *s) {
     s->top = -1;
 }
 // 判断栈是否为空
-static bool isEmpty(Stack *s) {
+static bool isEmptyStack(Stack *s) {
     return s->top == -1;
 }
 // 入栈
-static void push(Stack *s, char ch) {
+static void pushStack(Stack *s, char ch) {
     if (s->top < MAX_STACK_SIZE - 1) {
         s->data[++(s->top)] = ch;
     }
 }
 // 出栈
-static char pop(Stack *s) {
-    if (!isEmpty(s)) {
+static char popStack(Stack *s) {
+    if (!isEmptyStack(s)) {
         return s->data[(s->top)--];
     }
     return '\0'; // 返回一个空字符
 }
-//==========================================================================================//
-//==========================================================================================//
 
-// 查找双重字符位置
-static char *getDoubleChrOnString(char *MotherString, char HeadChr, char EndChr) {
-    Stack s;
-    initStack(&s);
+//==========================================================================================//
+// 通用扫描助手: 统一用 strnew.MaxLen 作硬上限, 同时遇到 '\0' 停止
+//==========================================================================================//
+static bool jsonIsSpace(char Chr) {
+    return ((Chr == ' ') || (Chr == '\t') || (Chr == '\r') || (Chr == '\n'));
+}
+
+// 跳过空白
+static char *jsonSkipSpace(char *P, strnew StrInput) {
+    if ((P == NULL) || (StrInput.Name._char == NULL) || (StrInput.MaxLen <= 0)) {
+        return P;
+    }
+    char *Limit = StrInput.Name._char + StrInput.MaxLen;
+    while ((P < Limit) && (*P != '\0') && jsonIsSpace(*P)) {
+        P++;
+    }
+    return P;
+}
+
+// 去掉 [Start, End) 尾部的空白
+static char *jsonTrimSpaceEnd(char *Start, char *End) {
+    while ((End > Start) && jsonIsSpace(*(End - 1))) {
+        End--;
+    }
+    return End;
+}
+
+// 查找双重字符位置 (StartP 为起点, 搜索范围由 MotherStr.MaxLen 限定)
+static char *getDoubleChrOnString(strnew MotherStr, char *StartP, char HeadChr, char EndChr) {
+    Stack DoubleChrS;
+    initStack(&DoubleChrS);
     char *result = NULL;
+    char *Limit = MotherStr.Name._char + MotherStr.MaxLen;
     bool InString = false;
-    for (int i = 0; (MotherString[i] != '\0'); i++) {
-        char Chr = MotherString[i];
+    for (char *P = StartP; (P < Limit) && (*P != '\0'); P++) {
+        char Chr = *P;
         if (InString) { // 字符串内容里的括号和转义不参与匹配
             if (Chr == '\\') {
-                if (MotherString[i + 1] == '\0') {
+                if (((P + 1) >= Limit) || (*(P + 1) == '\0')) {
                     break;
                 }
-                i++; // 跳过被转义的字符
+                P++; // 跳过被转义的字符
             } else if (Chr == '\"') {
                 InString = false;
             }
@@ -214,12 +240,12 @@ static char *getDoubleChrOnString(char *MotherString, char HeadChr, char EndChr)
             continue;
         }
         if (Chr == HeadChr) {
-            push(&s, HeadChr);
+            pushStack(&DoubleChrS, HeadChr);
         } else if (Chr == EndChr) {
-            if (!isEmpty(&s)) {
-                pop(&s);
-                if (isEmpty(&s)) {
-                    result = &MotherString[i];
+            if (!isEmptyStack(&DoubleChrS)) {
+                popStack(&DoubleChrS);
+                if (isEmptyStack(&DoubleChrS)) {
+                    result = P;
                     break;
                 }
             }
@@ -228,45 +254,71 @@ static char *getDoubleChrOnString(char *MotherString, char HeadChr, char EndChr)
     return result;
 }
 
-// 跳过 JSON 字符串, P 指向起始引号, 返回收尾引号后一位
-static char *skipJsonString(char *P) {
-    P++;
-    while (*P != '\0') {
-        if (*P == '\\') {
-            if (*(P + 1) == '\0') {
-                return P + 1;
-            }
-            P += 2;
-        } else if (*P == '\"') {
-            return (P + 1);
-        } else {
-            P++;
-        }
+// 跳过 JSON 字符串: P 指向起始引号, 成功返回收尾引号后一位, 失败返回 NULL
+// Strict=true 时校验转义并拒绝裸控制字符(供格式校验复用)
+static char *skipJsonString(strnew JsonStr, char *P, bool Strict) {
+    if ((P == NULL) || (*P != '\"')) {
+        return NULL;
     }
-    return P;
+    char *Limit = JsonStr.Name._char + JsonStr.MaxLen;
+    P++;
+    while ((P < Limit) && (*P != '\0')) {
+        unsigned char Chr = (unsigned char)(*P);
+        if (Chr == '"') {
+            return (P + 1);
+        }
+        if (Chr == '\\') {
+            P++;
+            if ((P >= Limit) || (*P == '\0')) {
+                return NULL;
+            }
+            if (Strict) {
+                if(*P == 'u') {
+                    for (int i = 0; i < 4; i++) {
+                        P++;
+                        if ((P >= Limit) || (*P == '\0')) {
+                            return NULL;
+                        }
+                        if (!(((*P >= '0') && (*P <= '9')) || ((*P >= 'a') && (*P <= 'f')) || ((*P >= 'A') && (*P <= 'F')))) {
+                            return NULL;
+                        }
+                    }
+                } else if(*P != '"' && *P != '\\' && *P != '/' && *P != 'b' && *P != 'f' && *P != 'n' && *P != 'r' && *P != 't') {
+                    return NULL;
+                }
+            }
+            P++;
+            continue;
+        }
+        if (Strict && (Chr < 0x20)) { // 裸控制字符
+            return NULL;
+        }
+        P++;
+    }
+    return NULL;
 }
-// 跳过对象/数组值, P 指向 '{' 或 '['
-static char *skipJsonComposite(char *P) {
+// 跳过对象/数组值, P 指向 '{' 或 '[', 成功返回配对括号后一位, 失败返回 NULL
+static char *skipJsonComposite(strnew JsonStr, char *P) {
+    if ((P == NULL) || ((*P != '{') && (*P != '['))) {
+        return NULL;
+    }
+    char *Limit = JsonStr.Name._char + JsonStr.MaxLen;
     int Depth = 0;
     bool InString = false;
-    for (; *P != '\0'; P++) {
+    while ((P < Limit) && (*P != '\0')) {
         char Chr = *P;
         if (InString) {
             if (Chr == '\\') {
-                if (*(P + 1) == '\0') {
-                    return (P + 1);
+                if (((P + 1) >= Limit) || (*(P + 1) == '\0')) {
+                    return NULL;
                 }
                 P++;
             } else if (Chr == '\"') {
                 InString = false;
             }
-            continue;
-        }
-        if (Chr == '\"') {
+        } else if (Chr == '\"') {
             InString = true;
-            continue;
-        }
-        if ((Chr == '{') || (Chr == '[')) {
+        } else if ((Chr == '{') || (Chr == '[')) {
             Depth++;
         } else if ((Chr == '}') || (Chr == ']')) {
             Depth--;
@@ -274,18 +326,23 @@ static char *skipJsonComposite(char *P) {
                 return (P + 1);
             }
         }
+        P++;
     }
-    return P;
+    return NULL;
 }
-// 跳过一个值, 返回其后的逗号或 '}' 位置
-static char *skipJsonValue(char *P) {
+// 跳过一个值, 成功返回其后第一个分隔符(逗号/收尾括号)或结束位置
+static char *skipJsonValue(strnew JsonStr, char *P) {
+    if (P == NULL) {
+        return NULL;
+    }
     if (*P == '\"') {
-        return skipJsonString(P);
+        return skipJsonString(JsonStr, P, false);
     }
     if ((*P == '{') || (*P == '[')) {
-        return skipJsonComposite(P);
+        return skipJsonComposite(JsonStr, P);
     }
-    while ((*P != '\0') && (*P != ',') && (*P != '}')) {
+    char *Limit = JsonStr.Name._char + JsonStr.MaxLen;
+    while ((P < Limit) && (*P != '\0') && (*P != ',') && (*P != '}')) {
         P++;
     }
     return P;
@@ -293,48 +350,55 @@ static char *skipJsonValue(char *P) {
 
 // 查找对象根层级中 "Key" 对应的值首地址, 允许冒号前后有空白
 // 跳过嵌套对象/数组和字符串内容; 未找到返回 NULL
-static char *getJsonValueStart(char *JsonString, char Key[]) {
-    size_t KeyLen = strlen(Key);
-    char *P = JsonString;
-    while ((*P == ' ') || (*P == '\t') || (*P == '\r') || (*P == '\n')) {
-        P++;
+static char *getJsonValueStart(strnew InputStr, char Key[]) {
+    if ((InputStr.Name._char == NULL) || (InputStr.MaxLen <= 0)) {
+        return NULL;
     }
-    if (*P != '{') { // 只处理对象
+    size_t KeyLen = strlen(Key);
+    char *Limit = InputStr.Name._char + InputStr.MaxLen;
+    char *P = jsonSkipSpace(InputStr.Name._char, InputStr);
+    if ((P >= Limit) || (*P != '{')) { // 只处理对象
         return NULL;
     }
     P++;
-    while (*P != '\0') {
-        while ((*P == ' ') || (*P == '\t') || (*P == '\r') || (*P == '\n') || (*P == ',')) {
+    while ((P < Limit) && (*P != '\0')) {
+        P = jsonSkipSpace(P, InputStr);
+        while ((P < Limit) && (*P == ',')) {
             P++;
+            P = jsonSkipSpace(P, InputStr);
         }
-        if ((*P == '}') || (*P == '\0')) {
+        if ((P >= Limit) || (*P == '\0') || (*P == '}')) {
             return NULL;
         }
         if (*P != '\"') { // 非标准成员, 跳到下一个分隔符
-            while ((*P != '\0') && (*P != ',') && (*P != '}')) {
-                P++;
+            P = skipJsonValue(InputStr, P);
+            if (P == NULL) {
+                return NULL;
             }
             continue;
         }
         char *KeyStart = P + 1;
-        char *AfterKey = skipJsonString(P);
-        char *Q = AfterKey;
-        while ((*Q == ' ') || (*Q == '\t') || (*Q == '\r') || (*Q == '\n')) {
-            Q++;
+        char *AfterKey = skipJsonString(InputStr, P, false);
+        if (AfterKey == NULL) {
+            return NULL;
         }
-        if (*Q != ':') { // 不是键值对, 跳过
-            P = Q;
+        char *Q = jsonSkipSpace(AfterKey, InputStr);
+        if ((Q >= Limit) || (*Q != ':')) { // 不是键值对, 跳过
+            P = AfterKey;
             continue;
         }
-        Q++;
-        while ((*Q == ' ') || (*Q == '\t') || (*Q == '\r') || (*Q == '\n')) {
-            Q++;
+        Q = jsonSkipSpace(Q + 1, InputStr);
+        if ((Q >= Limit) || (*Q == '\0')) {
+            return NULL;
         }
         size_t KeyTextLen = (size_t)((AfterKey - 1) - KeyStart);
         if ((KeyTextLen == KeyLen) && (memcmp(KeyStart, Key, KeyLen) == 0)) {
             return Q;
         }
-        P = skipJsonValue(Q);
+        P = skipJsonValue(InputStr, Q);
+        if (P == NULL) {
+            return NULL;
+        }
     }
     return NULL;
 }
@@ -348,79 +412,180 @@ static int Arr_sizeItemNum(struct _JsonArray This) {
     if (This.ItemNum != -1) {
         return This.ItemNum;
     }
-    char *P = This.JsonString.Name._char;
-    while ((*P != '\0') && (*P != '[')) { // 跳过根前空白
-        P++;
-    }
-    if (*P != '[') {
+    if ((This.JsonString.Name._char == NULL) || (This.JsonString.MaxLen <= 0)) {
         return 0;
     }
-    P++;
-    while ((*P == ' ') || (*P == '\t') || (*P == '\r') || (*P == '\n')) {
-        P++;
+    char *Limit = This.JsonString.Name._char + This.JsonString.MaxLen;
+    char *P = jsonSkipSpace(This.JsonString.Name._char, This.JsonString);
+    if ((P >= Limit) || (*P != '[')) {
+        return 0;
     }
-    if ((*P == ']') || (*P == '\0')) { // 空数组
+    P = jsonSkipSpace(P + 1, This.JsonString);
+    if ((P >= Limit) || (*P == ']') || (*P == '\0')) { // 空数组
         return 0;
     }
     int Depth = 0;
     int ItemNum = 1; // 至少有一个元素
     bool InString = false;
-    for (; *P != '\0'; P++) {
+    while ((P < Limit) && (*P != '\0')) {
         char Chr = *P;
         if (InString) { // 字符串内容不参与切分
             if (Chr == '\\') {
-                if (*(P + 1) == '\0') {
+                if (((P + 1) >= Limit) || (*(P + 1) == '\0')) {
                     break;
                 }
                 P++;
             } else if (Chr == '\"') {
                 InString = false;
             }
+            P++;
             continue;
         }
         if (Chr == '\"') {
             InString = true;
+            P++;
             continue;
         }
         if ((Chr == '{') || (Chr == '[')) {
             Depth++;
+            P++;
             continue;
         }
         if ((Chr == '}') || (Chr == ']')) {
             if (Depth > 0) {
                 Depth--;
+                P++;
                 continue;
             }
             if (Chr == ']') { // 根数组结束
                 break;
             }
+            P++;
             continue;
         }
         if ((Chr == ',') && (Depth == 0)) { // 只统计顶层逗号
             ItemNum++;
         }
+        P++;
     }
     This.ItemNum = ItemNum;
     return ItemNum;
 }
 static signed char Arr_isJsonNull(struct _JsonArray This) {
-    char *StartP = NULL;
-    if ((StartP = strchr(This.JsonString.Name._char, '[')) == NULL) {
+    if ((This.JsonString.Name._char == NULL) || (This.JsonString.MaxLen <= 0)) {
         return false;
     }
-    StartP++; // 跳过根 '['
-    while ((*StartP == ' ') || (*StartP == '\t') || (*StartP == '\r') || (*StartP == '\n')) {
-        StartP++;
+    char *Limit = This.JsonString.Name._char + This.JsonString.MaxLen;
+    char *StartP = jsonSkipSpace(This.JsonString.Name._char, This.JsonString);
+    if ((StartP >= Limit) || (*StartP != '[')) {
+        return false;
     }
-    return ((*StartP == ']' || *StartP == '\0') ? true : false);
+    StartP = jsonSkipSpace(StartP + 1, This.JsonString);
+    return (((StartP >= Limit) || (*StartP == ']') || (*StartP == '\0')) ? true : false);
 }
-static bool Arr_getItemRange(char *JsonString, int ItemNum, char **ItemStart, int *ItemLen);
+
+// 定位数组第 ItemNum 个顶层元素的原始区间, 保留元素自身的括号/引号/嵌套结构
+// 跳过字符串内容与转义, 只按顶层逗号和根 ']' 切分; 未找到返回 false
+static bool Arr_getItemRange(strnew JsonString, int ItemNum, char **ItemStart, int *ItemLen) {
+    if ((JsonString.Name._char == NULL) || (JsonString.MaxLen <= 0) || (ItemNum < 0)) {
+        return false;
+    }
+    char *Limit = JsonString.Name._char + JsonString.MaxLen;
+    char *P = jsonSkipSpace(JsonString.Name._char, JsonString);
+    if ((P >= Limit) || (*P != '[')) {
+        return false;
+    }
+    P = jsonSkipSpace(P + 1, JsonString);
+    if ((P >= Limit) || (*P == ']') || (*P == '\0')) {
+        return false;
+    }
+    int Depth = 0;
+    int Index = 0;
+    bool InString = false;
+    char *Start = P;
+    while ((P < Limit) && (*P != '\0')) {
+        char Chr = *P;
+        if (InString) { // 字符串内容不参与切分
+            if (Chr == '\\') {
+                if (((P + 1) >= Limit) || (*(P + 1) == '\0')) {
+                    break;
+                }
+                P++;
+            } else if (Chr == '\"') {
+                InString = false;
+            }
+            P++;
+            continue;
+        }
+        if (Chr == '\"') {
+            InString = true;
+            P++;
+            continue;
+        }
+        if ((Chr == '{') || (Chr == '[')) {
+            Depth++;
+            P++;
+            continue;
+        }
+        if ((Chr == '}') || (Chr == ']')) {
+            if (Depth > 0) {
+                Depth--;
+                P++;
+                continue;
+            }
+            if (Chr == ']') { // 根数组结束
+                if (Index == ItemNum) {
+                    char *End = jsonTrimSpaceEnd(Start, P);
+                    *ItemStart = Start;
+                    *ItemLen = (int)(End - Start);
+                    return true;
+                }
+                return false;
+            }
+            P++;
+            continue;
+        }
+        if ((Chr == ',') && (Depth == 0)) {
+            if (Index == ItemNum) {
+                char *End = jsonTrimSpaceEnd(Start, P);
+                *ItemStart = Start;
+                *ItemLen = (int)(End - Start);
+                return true;
+            }
+            Index++;
+            Start = jsonSkipSpace(P + 1, JsonString);
+            P = Start;
+            continue;
+        }
+        P++;
+    }
+    return false;
+}
+
+static void Arr_getArray(struct _JsonArray This, strnew OutStr, int ItemNum) {
+    if (OutStr.Name._char == This.JsonString.Name._char) {
+        return;
+    }
+    memset(OutStr.Name._char, 0, OutStr.MaxLen);
+    char *StartP = NULL;
+    int ItemLen = 0;
+    if (Arr_getItemRange(This.JsonString, ItemNum, &StartP, &ItemLen) == false) {
+        return;
+    }
+    if (ItemLen >= OutStr.MaxLen) { // 输出空间不足时截断, 保证有结束符
+        ItemLen = OutStr.MaxLen - 1;
+    }
+    if (ItemLen > 0) {
+        memcpy(OutStr.Name._char, StartP, (size_t)ItemLen);
+    }
+    OutStr.Name._char[ItemLen] = '\0';
+}
 
 static void Arr_get(struct _JsonArray This, strnew OutStr, int ItemNum) {
     memset(OutStr.Name._char, 0, OutStr.MaxLen);
     char *StartP = NULL;
     int ItemLen = 0;
-    if (Arr_getItemRange(This.JsonString.Name._char, ItemNum, &StartP, &ItemLen) == false) {
+    if (Arr_getItemRange(This.JsonString, ItemNum, &StartP, &ItemLen) == false) {
         return;
     }
     if (StartP[0] == '\"') { // 字符串元素去掉外层引号, 保留内部转义
@@ -445,112 +610,15 @@ static void Arr_get(struct _JsonArray This, strnew OutStr, int ItemNum) {
     }
     OutStr.Name._char[ItemLen] = '\0';
 }
-// 定位数组第 ItemNum 个顶层元素的原始区间, 保留元素自身的括号/引号/嵌套结构
-// 跳过字符串内容与转义, 只按顶层逗号和根 ']' 切分; 未找到返回 false
-static bool Arr_getItemRange(char *JsonString, int ItemNum, char **ItemStart, int *ItemLen) {
-    char *P = JsonString;
-    while ((*P != '\0') && (*P != '[')) {
-        P++;
-    }
-    if (*P != '[') {
-        return false;
-    }
-    P++;
-    while ((*P == ' ') || (*P == '\t') || (*P == '\r') || (*P == '\n')) {
-        P++;
-    }
-    if ((*P == ']') || (*P == '\0')) {
-        return false;
-    }
-    int Depth = 0;
-    int Index = 0;
-    bool InString = false;
-    char *Start = P;
-    for (; *P != '\0'; P++) {
-        char Chr = *P;
-        if (InString) { // 字符串内容不参与切分
-            if (Chr == '\\') {
-                if (*(P + 1) == '\0') {
-                    break;
-                }
-                P++;
-            } else if (Chr == '\"') {
-                InString = false;
-            }
-            continue;
-        }
-        if (Chr == '\"') {
-            InString = true;
-            continue;
-        }
-        if ((Chr == '{') || (Chr == '[')) {
-            Depth++;
-            continue;
-        }
-        if ((Chr == '}') || (Chr == ']')) {
-            if (Depth > 0) {
-                Depth--;
-                continue;
-            }
-            if (Chr == ']') { // 根数组结束
-                if (Index == ItemNum) {
-                    char *End = P;
-                    while ((End > Start) && ((*(End - 1) == ' ') || (*(End - 1) == '\t') || (*(End - 1) == '\r') || (*(End - 1) == '\n'))) {
-                        End--;
-                    }
-                    *ItemStart = Start;
-                    *ItemLen = (int)(End - Start);
-                    return true;
-                }
-                return false;
-            }
-            continue;
-        }
-        if ((Chr == ',') && (Depth == 0)) {
-            if (Index == ItemNum) {
-                char *End = P;
-                while ((End > Start) && ((*(End - 1) == ' ') || (*(End - 1) == '\t') || (*(End - 1) == '\r') || (*(End - 1) == '\n'))) {
-                    End--;
-                }
-                *ItemStart = Start;
-                *ItemLen = (int)(End - Start);
-                return true;
-            }
-            Index++;
-            Start = P + 1;
-            while ((*Start == ' ') || (*Start == '\t') || (*Start == '\r') || (*Start == '\n')) {
-                Start++;
-            }
-        }
-    }
-    return false;
-}
-static void Arr_getArray(struct _JsonArray This, strnew OutStr, int ItemNum) {
-    if (OutStr.Name._char == This.JsonString.Name._char) {
-        return;
-    }
-    memset(OutStr.Name._char, 0, OutStr.MaxLen);
-    char *StartP = NULL;
-    int ItemLen = 0;
-    if (Arr_getItemRange(This.JsonString.Name._char, ItemNum, &StartP, &ItemLen) == false) {
-        return;
-    }
-    if (ItemLen >= OutStr.MaxLen) { // 输出空间不足时截断, 保证有结束符
-        ItemLen = OutStr.MaxLen - 1;
-    }
-    if (ItemLen > 0) {
-        memcpy(OutStr.Name._char, StartP, (size_t)ItemLen);
-    }
-    OutStr.Name._char[ItemLen] = '\0';
-}
+
 JsonArray newJsonArrayByString(strnew DataInit) {
     JsonArray Temp;
     Temp.JsonString = DataInit;
     Temp.ItemNum = -1;
     Temp.sizeItemNum = Arr_sizeItemNum;
     Temp.isJsonNull = Arr_isJsonNull;
-    Temp.get = Arr_get;
     Temp.getArray = Arr_getArray;
+    Temp.get = Arr_get;
     return Temp;
 }
 
@@ -562,49 +630,56 @@ JsonArray newJsonArrayByString(strnew DataInit) {
 
 // 统计对象根层级的键值对个数, 跳过嵌套对象/数组与字符串内容
 static int Obj_sizeStr(struct _JsonObject This) {
-    char *P = This.JsonString.Name._char;
-    while ((*P == ' ') || (*P == '\t') || (*P == '\r') || (*P == '\n')) {
-        P++;
+    if ((This.JsonString.Name._char == NULL) || (This.JsonString.MaxLen <= 0)) {
+        return 0;
     }
-    if (*P != '{') { // 只处理对象
+    char *Limit = This.JsonString.Name._char + This.JsonString.MaxLen;
+    char *P = jsonSkipSpace(This.JsonString.Name._char, This.JsonString);
+    if ((P >= Limit) || (*P != '{')) { // 只处理对象
         return 0;
     }
     P++;
     int Count = 0;
-    while (*P != '\0') {
-        while ((*P == ' ') || (*P == '\t') || (*P == '\r') || (*P == '\n') || (*P == ',')) {
+    while ((P < Limit) && (*P != '\0')) {
+        P = jsonSkipSpace(P, This.JsonString);
+        while ((P < Limit) && (*P == ',')) {
             P++;
+            P = jsonSkipSpace(P, This.JsonString);
         }
-        if ((*P == '}') || (*P == '\0')) {
+        if ((P >= Limit) || (*P == '}') || (*P == '\0')) {
             break;
         }
         if (*P != '\"') { // 非标准成员, 跳到下一个分隔符
-            while ((*P != '\0') && (*P != ',') && (*P != '}')) {
-                P++;
+            P = skipJsonValue(This.JsonString, P);
+            if (P == NULL) {
+                break;
             }
             continue;
         }
-        char *AfterKey = skipJsonString(P);
-        char *Q = AfterKey;
-        while ((*Q == ' ') || (*Q == '\t') || (*Q == '\r') || (*Q == '\n')) {
-            Q++;
+        char *AfterKey = skipJsonString(This.JsonString, P, false);
+        if (AfterKey == NULL) {
+            break;
         }
-        if (*Q != ':') { // 不是键值对, 跳过
-            P = Q;
+        char *Q = jsonSkipSpace(AfterKey, This.JsonString);
+        if ((Q >= Limit) || (*Q != ':')) { // 不是键值对, 跳过
+            P = AfterKey;
             continue;
         }
-        Q++;
-        while ((*Q == ' ') || (*Q == '\t') || (*Q == '\r') || (*Q == '\n')) {
-            Q++;
+        Q = jsonSkipSpace(Q + 1, This.JsonString);
+        if ((Q >= Limit) || (*Q == '\0')) {
+            break;
         }
         Count++;
-        P = skipJsonValue(Q);
+        P = skipJsonValue(This.JsonString, Q);
+        if (P == NULL) {
+            break;
+        }
     }
     return Count;
 }
 static signed char Obj_isJsonNull(struct _JsonObject This, char Key[]) {
     signed char ResOver = -1;
-    char *KeyP = getJsonValueStart(This.JsonString.Name._char, Key);
+    char *KeyP = getJsonValueStart(This.JsonString, Key);
     if (KeyP != NULL) {
         ResOver = false;
         // 只比较前缀, 不再临时改写输入; strncmp 遇到 '\0' 会停止, 不会越界
@@ -615,7 +690,7 @@ static signed char Obj_isJsonNull(struct _JsonObject This, char Key[]) {
     return ResOver;
 }
 static int Obj_getInt(struct _JsonObject This, char Key[]) {
-    char *KeyP = getJsonValueStart(This.JsonString.Name._char, Key);
+    char *KeyP = getJsonValueStart(This.JsonString, Key);
     if (KeyP != NULL) {
         return doneAsciiStrToAnyBaseNumberData(KeyP, 16);
         // return atol(KeyP);
@@ -623,7 +698,7 @@ static int Obj_getInt(struct _JsonObject This, char Key[]) {
     return 0;
 }
 static double Obj_getDouble(struct _JsonObject This, char Key[]) {
-    char *KeyP = getJsonValueStart(This.JsonString.Name._char, Key);
+    char *KeyP = getJsonValueStart(This.JsonString, Key);
     if (KeyP != NULL) {
         return atof(KeyP);
     }
@@ -631,7 +706,7 @@ static double Obj_getDouble(struct _JsonObject This, char Key[]) {
 }
 static bool Obj_getBool(struct _JsonObject This, char Key[]) {
     bool ResBool = false;
-    char *KeyP = getJsonValueStart(This.JsonString.Name._char, Key);
+    char *KeyP = getJsonValueStart(This.JsonString, Key);
     if (KeyP != NULL) {
         // 只比较前缀, 不再临时改写输入; "false" 需要比较 5 个字符
         if ((strncmp(KeyP, "true", 4) == 0) || (strncmp(KeyP, "TRUE", 4) == 0) || (strncmp(KeyP, "True", 4) == 0)) {
@@ -644,47 +719,31 @@ static bool Obj_getBool(struct _JsonObject This, char Key[]) {
 }
 // 不支持原地转换, 避免破环 json 数据
 static void Obj_getString(struct _JsonObject This, char Key[], strnew OutStr) {
-    char *KeyP = getJsonValueStart(This.JsonString.Name._char, Key);
+    char *KeyP = getJsonValueStart(This.JsonString, Key);
     if (KeyP == NULL) {
         return;
     }
     if (*KeyP != '"') { // 值的首字符不是引号, 不是字符串
         return;
     }
-    // 从值的首字符之后开始扫描, 跳过转义字符, 避免把 \" 当作结束引号
-    char *EndP = KeyP + 1;
-    bool IsClosed = false;
-    while ((EndP < (This.JsonString.Name._char + This.JsonString.MaxLen)) && (*EndP != '\0')) {
-        if (*EndP == '\\') {
-            EndP++;
-            if (*EndP == '\0') {
-                break;
-            }
-            EndP++;
-            continue;
-        }
-        if (*EndP == '"') {
-            IsClosed = true;
-            break;
-        }
-        EndP++;
-    }
-    if (IsClosed == false) {
+    // 用 skipJsonString 跳过转义, 返回收尾引号后一位
+    char *EndP = skipJsonString(This.JsonString, KeyP, false);
+    if (EndP == NULL) {
         return;
     }
-    char Temp = *EndP;
-    *EndP = '\0';
+    char Temp = *(EndP - 1);
+    *(EndP - 1) = '\0';
     memset(OutStr.Name._char, 0, OutStr.MaxLen);
     copyString(OutStr.Name._char, (KeyP + 1), OutStr.MaxLen, strlen(KeyP + 1));
-    *EndP = Temp;
+    *(EndP - 1) = Temp;
 }
 // 注意输出地址与原json字符串地址一致时, 会破坏原数据
 static struct _JsonArray Obj_getArray(struct _JsonObject This, char Key[], strnew OutStr) {
     JsonArray tempJsonArr = newJsonArrayByString(OutStr);
-    char *KeyP = getJsonValueStart(This.JsonString.Name._char, Key);
+    char *KeyP = getJsonValueStart(This.JsonString, Key);
     if (KeyP != NULL) {
         char *EndP = NULL;
-        if ((EndP = getDoubleChrOnString(KeyP, '[', ']')) != NULL) {
+        if ((EndP = getDoubleChrOnString(This.JsonString, KeyP, '[', ']')) != NULL) {
             char Temp = *(EndP + 1);
             *(EndP + 1) = '\0';
             if (OutStr.Name._char != This.JsonString.Name._char) {
@@ -702,10 +761,10 @@ static struct _JsonArray Obj_getArray(struct _JsonObject This, char Key[], strne
 // 注意输出地址与原json字符串地址一致时, 会破坏原数据
 static struct _JsonObject Obj_getObject(struct _JsonObject This, char Key[], strnew OutStr) {
     JsonObject tempJsonObj = newJsonObjectByString(OutStr);
-    char *KeyP = getJsonValueStart(This.JsonString.Name._char, Key);
+    char *KeyP = getJsonValueStart(This.JsonString, Key);
     if (KeyP != NULL) {
         char *EndP = NULL;
-        if ((EndP = getDoubleChrOnString(KeyP, '{', '}')) != NULL) {
+        if ((EndP = getDoubleChrOnString(This.JsonString, KeyP, '{', '}')) != NULL) {
             char Temp = *(EndP + 1);
             *(EndP + 1) = '\0';
             if (OutStr.Name._char != This.JsonString.Name._char) {
@@ -720,13 +779,6 @@ static struct _JsonObject Obj_getObject(struct _JsonObject This, char Key[], str
     }
     return tempJsonObj;
 }
-
-// // 判断是否符合 json 格式
-// bool isJsonSrring(){
-//     Stack s;
-//     initStack(&s);
-
-// }
 
 JsonObject newJsonObjectByString(strnew DataInit) {
     JsonObject Temp;
@@ -816,4 +868,233 @@ bool checkOfCsJsonStrIsRight(strnew JsonInputStr, strnew JsonOutputStr) {
     JsonOutputStr.Name._char[DataLen] = '\0';
     return isSumCs(JsonOutputStr, DataLen);
 #endif
+}
+
+/*
+ * JSON 格式校验 (isJsonSrring)
+ *
+ * 规则:
+ *  - 只接受对象/数组作为根(与协议帧一致), 允许前后空白
+ *  - 严格校验: 双引号键名 / 数字语法 / true,false,null / \uXXXX 转义,
+ *    不允许尾随逗号、前导 0、单引号、尾随多余内容
+ *  - 字符串里不允许裸控制字符 (< 0x20)
+ *  - 迭代状态机, 不使用递归; 嵌套层数上限 JSON_CHECK_MAX_DEPTH
+ *  - 扫描统一用 strnew 的 MaxLen 作硬上限, 同时遇 '\0' 停止;
+ *    文本真正末尾由 StrLib 的 CheckTextEnd() 取得
+ */
+#define JSON_CHECK_MAX_DEPTH 32
+
+typedef struct {
+    unsigned char CloseChr; // '}' 或 ']'
+    unsigned char State;
+} JsonCheckFrame;
+
+#define JSON_CHECK_ST_FIRST 0u
+#define JSON_CHECK_ST_KEY   1u
+#define JSON_CHECK_ST_COLON 2u
+#define JSON_CHECK_ST_VALUE 3u
+#define JSON_CHECK_ST_AFTER 4u
+
+// 校验 JSON 数字: 成功返回数字后一位
+static char *jsonCheckNumber(char *P, strnew JsonInputStr) {
+    if (P == NULL) {
+        return NULL;
+    }
+    char *Limit = JsonInputStr.Name._char + JsonInputStr.MaxLen;
+    if ((P >= Limit) || (*P == '\0')) {
+        return NULL;
+    }
+    if (*P == '-') {
+        P++;
+    }
+    if ((P >= Limit) || (*P == '\0') || (*P < '0') || (*P > '9')) {
+        return NULL;
+    }
+    if (*P == '0') {
+        P++;
+        if ((P < Limit) && (*P != '\0') && (*P >= '0') && (*P <= '9')) {
+            return NULL; // 不允许前导 0
+        }
+    } else {
+        while ((P < Limit) && (*P != '\0') && (*P >= '0') && (*P <= '9')) {
+            P++;
+        }
+    }
+    if ((P < Limit) && (*P != '\0') && (*P == '.')) {
+        P++;
+        if ((P >= Limit) || (*P == '\0') || (*P < '0') || (*P > '9')) {
+            return NULL;
+        }
+        while ((P < Limit) && (*P != '\0') && (*P >= '0') && (*P <= '9')) {
+            P++;
+        }
+    }
+    if ((P < Limit) && (*P != '\0') && ((*P == 'e') || (*P == 'E'))) {
+        P++;
+        if ((P < Limit) && (*P != '\0') && ((*P == '+') || (*P == '-'))) {
+            P++;
+        }
+        if ((P >= Limit) || (*P == '\0') || (*P < '0') || (*P > '9')) {
+            return NULL;
+        }
+        while ((P < Limit) && (*P != '\0') && (*P >= '0') && (*P <= '9')) {
+            P++;
+        }
+    }
+    return P;
+}
+
+// 校验整串(允许前后空白), Root 指定根类型
+static bool jsonCheckRoot(strnew JsonInputStr, char Root) {
+    if ((JsonInputStr.Name._char == NULL) || (JsonInputStr.MaxLen <= 0)) {
+        return false;
+    }
+    char *Start = JsonInputStr.Name._char;
+    char *Limit = Start + JsonInputStr.MaxLen;
+    char *TextEnd = CheckTextEnd(JsonInputStr);
+    if (TextEnd == NULL) {
+        return false;
+    }
+    char *P = jsonSkipSpace(Start, JsonInputStr);
+    if ((P >= Limit) || (*P != Root)) {
+        return false;
+    }
+
+    JsonCheckFrame Frames[JSON_CHECK_MAX_DEPTH];
+    int Depth = 0;
+
+    Frames[Depth].CloseChr = (unsigned char)((Root == '{') ? '}' : ']');
+    Frames[Depth].State = JSON_CHECK_ST_FIRST;
+    Depth++;
+    P++; // 跳过根开括号
+
+    while (Depth > 0) {
+        JsonCheckFrame *Top = &Frames[Depth - 1];
+        P = jsonSkipSpace(P, JsonInputStr);
+        if ((P >= Limit) || (*P == '\0')) {
+            return false;
+        }
+
+        if (Top->State == JSON_CHECK_ST_AFTER) { // 一个值结束
+            if (*P == (char)Top->CloseChr) {
+                Depth--;
+                P++;
+                if (Depth > 0) {
+                    Frames[Depth - 1].State = JSON_CHECK_ST_AFTER;
+                }
+                continue;
+            }
+            if (*P != ',') {
+                return false;
+            }
+            P++;
+            Top->State = (Top->CloseChr == (unsigned char)'}') ? JSON_CHECK_ST_KEY : JSON_CHECK_ST_VALUE;
+            continue;
+        }
+
+        if ((Top->CloseChr == (unsigned char)'}') &&
+            ((Top->State == JSON_CHECK_ST_FIRST) || (Top->State == JSON_CHECK_ST_KEY))) {
+            if ((Top->State == JSON_CHECK_ST_FIRST) && (*P == '}')) { // 空对象
+                Depth--;
+                P++;
+                if (Depth > 0) {
+                    Frames[Depth - 1].State = JSON_CHECK_ST_AFTER;
+                }
+                continue;
+            }
+            if (*P != '"') {
+                return false;
+            }
+            P = skipJsonString(JsonInputStr, P, true);
+            if (P == NULL) {
+                return false;
+            }
+            Top->State = JSON_CHECK_ST_COLON;
+            continue;
+        }
+
+        if ((Top->CloseChr == (unsigned char)'}') && (Top->State == JSON_CHECK_ST_COLON)) {
+            if (*P != ':') {
+                return false;
+            }
+            P++;
+            Top->State = JSON_CHECK_ST_VALUE;
+            continue;
+        }
+
+        if ((Top->State == JSON_CHECK_ST_FIRST) && (*P == (char)Top->CloseChr)) { // 空数组
+            Depth--;
+            P++;
+            if (Depth > 0) {
+                Frames[Depth - 1].State = JSON_CHECK_ST_AFTER;
+            }
+            continue;
+        }
+
+        // 解析一个值 (ST_FIRST / ST_VALUE)
+        switch (*P) {
+        case '"':
+            P = skipJsonString(JsonInputStr, P, true);
+            if (P == NULL) {
+                return false;
+            }
+            Top->State = JSON_CHECK_ST_AFTER;
+            break;
+        case '{':
+        case '[':
+            if (Depth >= JSON_CHECK_MAX_DEPTH) {
+                return false; // 嵌套过深
+            }
+            Frames[Depth].CloseChr = (unsigned char)((*P == '{') ? '}' : ']');
+            Frames[Depth].State = JSON_CHECK_ST_FIRST;
+            Depth++;
+            P++;
+            break;
+        case 't':
+            if (((TextEnd - P) < 4) || (memcmp(P, "true", 4) != 0)) {
+                return false;
+            }
+            P += 4;
+            Top->State = JSON_CHECK_ST_AFTER;
+            break;
+        case 'f':
+            if (((TextEnd - P) < 5) || (memcmp(P, "false", 5) != 0)) {
+                return false;
+            }
+            P += 5;
+            Top->State = JSON_CHECK_ST_AFTER;
+            break;
+        case 'n':
+            if (((TextEnd - P) < 4) || (memcmp(P, "null", 4) != 0)) {
+                return false;
+            }
+            P += 4;
+            Top->State = JSON_CHECK_ST_AFTER;
+            break;
+        default:
+            P = jsonCheckNumber(P, JsonInputStr);
+            if (P == NULL) {
+                return false;
+            }
+            Top->State = JSON_CHECK_ST_AFTER;
+            break;
+        }
+    }
+
+    P = jsonSkipSpace(P, JsonInputStr);
+    return (P == TextEnd); // 不允许尾随多余内容
+}
+
+// 判断是否符合 json 格式
+bool isJsonSrring(const strnew JsonInputStr) {
+    if ((JsonInputStr.Name._char == NULL) || (JsonInputStr.MaxLen <= 0)) {
+        return false;
+    }
+    char *P = jsonSkipSpace(JsonInputStr.Name._char, JsonInputStr);
+    if (*P == '{') {
+        return jsonCheckRoot(JsonInputStr, '{');
+    } else if (*P == '[') {
+        return jsonCheckRoot(JsonInputStr, '[');
+    }
+    return false;
 }

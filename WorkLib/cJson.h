@@ -64,4 +64,7 @@ extern void addJsonItemData(strnew JsonStringSpace, const char *FromStr, ...);
 extern void addCsToJsonAndPushJsonStr(JsonObject InputJsonStrObj);
 extern bool checkOfCsJsonStrIsRight(strnew JsonInputStr, strnew JsonOutputStr);
 
+/***************** json 格式 *****************/
+extern bool isJsonSrring(const strnew JsonInputStr);
+
 #endif

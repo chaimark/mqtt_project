@@ -209,6 +209,8 @@ bool moveDataOnBuff(strnew IntptBuff, int ShiftLen, bool IsLeft) {
     }
     return true;
 }
+
+// 字符串截取
 void stringSlice(strnew OutStr, strnew Mather, int start, int end) {
     int NeedLen = (end >= start ? (end - start) : (start - end));
     if ((NeedLen + start) > Mather.MaxLen) {
@@ -218,4 +220,17 @@ void stringSlice(strnew OutStr, strnew Mather, int start, int end) {
         return;
     }
     memcpy(OutStr.Name._char, &Mather.Name._char[start], NeedLen);
+}
+
+// 返回文本末尾: 指向 '\0' 或 start + MaxLen; 缓冲非法时返回 NULL
+char *CheckTextEnd(strnew JsonInputStr) {
+    if ((JsonInputStr.Name._char == NULL) || (JsonInputStr.MaxLen <= 0)) {
+        return NULL;
+    }
+    char *Limit = JsonInputStr.Name._char + JsonInputStr.MaxLen;
+    char *OverAddr = JsonInputStr.Name._char;
+    while ((OverAddr < Limit) && (*OverAddr != '\0')) {
+        OverAddr++;
+    }
+    return OverAddr;
 }

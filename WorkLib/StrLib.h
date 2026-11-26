@@ -79,6 +79,7 @@ extern void swapStr(char *IntputStr, int StrLen);
 extern char swapLowHight_Of_Char(char InputCh);
 extern bool moveDataOnBuff(strnew IntptBuff, int ShiftLen, bool IsLeft);
 extern void stringSlice(strnew OutStr, strnew Mather, int start, int end);
+extern char *CheckTextEnd(strnew JsonInputStr);
 
 #ifdef _Alignas
 #define GET_TYPE(var) (_Generic((var), int                   \
